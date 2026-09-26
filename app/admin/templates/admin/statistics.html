@@ -1,0 +1,79 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Statistics - FTMT Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Statistics</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">Complaint Statuses</div>
+            <div class="card-body">
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Total
+                        <span class="badge bg-primary rounded-pill">{{ stats.total }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Submitted (Pending Triage)
+                        <span class="badge bg-secondary rounded-pill">{{ stats.submitted }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Triage
+                        <span class="badge bg-warning rounded-pill text-dark">{{ stats.triage }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Routed
+                        <span class="badge bg-info rounded-pill text-dark">{{ stats.routed }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        In Progress
+                        <span class="badge bg-primary rounded-pill">{{ stats.in_progress }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Resolved
+                        <span class="badge bg-success rounded-pill">{{ stats.resolved }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Rejected
+                        <span class="badge bg-danger rounded-pill">{{ stats.rejected }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">Resolution Time (Hours)</div>
+            <div class="card-body">
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Sample Size
+                        <span class="badge bg-secondary rounded-pill">{{ res_time.count }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Median Resolution Time
+                        <span class="badge bg-info rounded-pill text-dark">{{ res_time.median_hours or 'N/A' }} hrs</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        90th Percentile Time
+                        <span class="badge bg-warning rounded-pill text-dark">{{ res_time.p90_hours or 'N/A' }} hrs</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Minimum Time
+                        <span class="badge bg-success rounded-pill">{{ res_time.min_hours or 'N/A' }} hrs</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Maximum Time
+                        <span class="badge bg-danger rounded-pill">{{ res_time.max_hours or 'N/A' }} hrs</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,65 @@
+[project]
+name = "ftmt"
+version = "0.1.0"
+description = "Farg'ona Tuman Murojaatlar Tizimi — Citizen Complaints Management System"
+requires-python = ">=3.11"
+dependencies = [
+    "python-telegram-bot[webhooks]>=20.7",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "sqlalchemy[asyncio]>=2.0.23",
+    "aiosqlite>=0.19.0",
+    "alembic>=1.12.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "bcrypt>=4.1.0",
+    "python-multipart>=0.0.6",
+    "jinja2>=3.1.2",
+    "apscheduler>=3.10.4",
+    "itsdangerous>=2.1.2",
+    "httpx>=0.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.6",
+    "httpx>=0.25.0",
+]
+prod = [
+    "asyncpg>=0.29.0",
+    "gunicorn>=21.2.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "S", "B", "A", "C4", "DTZ", "T20", "RET", "SIM"]
+ignore = ["S101", "S104"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

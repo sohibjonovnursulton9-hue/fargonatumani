@@ -1,0 +1,533 @@
+"""
+Tests for core business services.
+Tests complaint creation, status transitions, rate limiting,
+duplicate detection, drafts, and user consent.
+"""
+
+import pytest
+import pytest_asyncio
+from datetime import datetime, timezone
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import (
+    Category,
+    CategoryOrganization,
+    Complaint,
+    ComplaintLanguage,
+    ComplaintStatus,
+    ComplaintType,
+    MFYArea,
+    Organization,
+    User,
+    AdminUser,
+    AdminRole,
+    utcnow,
+)
+from app.services import (
+    ComplaintService,
+    DraftService,
+    RateLimitService,
+    UserService,
+    CatalogService,
+    AssignmentService,
+    AuditService,
+)
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+async def create_test_user(session: AsyncSession, telegram_id: int = 12345) -> User:
+    """Create a test citizen user."""
+    user = User(telegram_id=telegram_id, interface_language="uz")
+    session.add(user)
+    await session.flush()
+    return user
+
+
+async def create_test_category(session: AsyncSession) -> Category:
+    """Create a test category."""
+    cat = Category(
+        code="test_education",
+        name_uz="Ta'lim",
+        name_uz_cyrillic="Таълим",
+        name_ru="Образование",
+        is_provisional=True,
+    )
+    session.add(cat)
+    await session.flush()
+    return cat
+
+
+async def create_test_org(session: AsyncSession) -> Organization:
+    """Create a test organization."""
+    org = Organization(
+        code="test_edu_dept",
+        name_uz="Ta'lim bo'limi",
+        name_uz_cyrillic="Таълим бўлими",
+        name_ru="Отдел образования",
+        is_provisional=True,
+    )
+    session.add(org)
+    await session.flush()
+    return org
+
+
+async def create_test_admin(
+    session: AsyncSession, role: str = AdminRole.SUPER_ADMIN.value, org_id: int | None = None
+) -> AdminUser:
+    """Create a test admin user."""
+    import bcrypt
+    admin = AdminUser(
+        username=f"testadmin_{role}",
+        password_hash=bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode(),
+        full_name="Test Admin",
+        role=role,
+        organization_id=org_id,
+    )
+    session.add(admin)
+    await session.flush()
+    return admin
+
+
+async def create_test_mfy(session: AsyncSession) -> MFYArea:
+    """Create a test MFY area."""
+    mfy = MFYArea(
+        name_uz="Tinchlik MFY",
+        name_uz_cyrillic="Тинчлик МФЙ",
+        name_ru="МСГ Тинчлик",
+        is_provisional=True,
+    )
+    session.add(mfy)
+    await session.flush()
+    return mfy
+
+
+async def create_test_complaint(
+    session: AsyncSession,
+    user: User,
+    category: Category,
+    mfy: MFYArea | None = None,
+) -> Complaint:
+    """Create a test complaint using the service."""
+    return await ComplaintService.create_complaint(
+        session=session,
+        user_id=user.id,
+        complaint_type=ComplaintType.ARIZA.value,
+        complaint_language=ComplaintLanguage.UZ_LATIN.value,
+        category_id=category.id,
+        full_name="Test Foydalanuvchi Testov",
+        phone_number="+998901234567",
+        title="Test murojaat",
+        complaint_text="Bu test murojaat matni.",
+        mfy_area_id=mfy.id if mfy else None,
+        address_detail="Test ko'chasi, 1-uy",
+    )
+
+
+# ============================================================================
+# User Service Tests
+# ============================================================================
+
+class TestUserService:
+    """Test user creation and consent management."""
+
+    @pytest.mark.asyncio
+    async def test_create_new_user(self, db_session: AsyncSession):
+        user = await UserService.get_or_create_user(db_session, telegram_id=11111)
+        assert user.id is not None
+        assert user.telegram_id == 11111
+        assert user.interface_language == "uz"
+
+    @pytest.mark.asyncio
+    async def test_get_existing_user(self, db_session: AsyncSession):
+        user1 = await UserService.get_or_create_user(db_session, telegram_id=22222)
+        user2 = await UserService.get_or_create_user(db_session, telegram_id=22222)
+        assert user1.id == user2.id
+
+    @pytest.mark.asyncio
+    async def test_consent_recording(self, db_session: AsyncSession):
+        user = await create_test_user(db_session, telegram_id=33333)
+        await db_session.commit()
+
+        # No consent yet
+        has_consent = await UserService.has_valid_consent(db_session, user.id, "1.0-draft")
+        assert has_consent is False
+
+        # Record consent
+        record = await UserService.record_consent(
+            db_session, user.id, "1.0-draft", "consent text here", True
+        )
+        await db_session.commit()
+        assert record.accepted is True
+
+        # Now has consent
+        has_consent = await UserService.has_valid_consent(db_session, user.id, "1.0-draft")
+        assert has_consent is True
+
+    @pytest.mark.asyncio
+    async def test_consent_version_mismatch(self, db_session: AsyncSession):
+        user = await create_test_user(db_session, telegram_id=44444)
+        await db_session.commit()
+
+        await UserService.record_consent(
+            db_session, user.id, "1.0-draft", "old text", True
+        )
+        await db_session.commit()
+
+        # Different version should not have consent
+        has_consent = await UserService.has_valid_consent(db_session, user.id, "2.0")
+        assert has_consent is False
+
+
+# ============================================================================
+# Complaint Service Tests
+# ============================================================================
+
+class TestComplaintService:
+    """Test complaint creation and lifecycle."""
+
+    @pytest.mark.asyncio
+    async def test_create_complaint(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        complaint = await create_test_complaint(db_session, user, category)
+
+        assert complaint.id is not None
+        assert complaint.tracking_id.startswith("FTMT-")
+        assert complaint.status == ComplaintStatus.SUBMITTED.value
+        assert complaint.submitted_at is not None
+        assert complaint.phone_verified is False  # OTP not implemented
+
+    @pytest.mark.asyncio
+    async def test_unique_tracking_ids(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        complaints = []
+        for _ in range(5):
+            c = await create_test_complaint(db_session, user, category)
+            complaints.append(c)
+
+        tracking_ids = {c.tracking_id for c in complaints}
+        assert len(tracking_ids) == 5  # All unique
+
+    @pytest.mark.asyncio
+    async def test_valid_status_transition(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        complaint = await create_test_complaint(db_session, user, category)
+
+        # SUBMITTED → TRIAGE
+        updated = await ComplaintService.transition_status(
+            db_session, complaint.id, ComplaintStatus.TRIAGE, "admin", "1"
+        )
+        assert updated.status == ComplaintStatus.TRIAGE.value
+
+    @pytest.mark.asyncio
+    async def test_invalid_status_transition(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        complaint = await create_test_complaint(db_session, user, category)
+
+        # SUBMITTED → RESOLVED should fail (skips steps)
+        with pytest.raises(ValueError, match="Invalid transition"):
+            await ComplaintService.transition_status(
+                db_session, complaint.id, ComplaintStatus.RESOLVED, "admin", "1"
+            )
+
+    @pytest.mark.asyncio
+    async def test_citizen_confirmation_resolved(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        complaint = await create_test_complaint(db_session, user, category)
+
+        # Walk through happy path to CITIZEN_CONFIRMATION_PENDING
+        for status in [
+            ComplaintStatus.TRIAGE,
+            ComplaintStatus.ROUTED,
+            ComplaintStatus.IN_PROGRESS,
+            ComplaintStatus.RESPONSE_PROVIDED,
+            ComplaintStatus.IMPLEMENTATION_REPORTED,
+            ComplaintStatus.CITIZEN_CONFIRMATION_PENDING,
+        ]:
+            await ComplaintService.transition_status(
+                db_session, complaint.id, status, "admin", "1"
+            )
+
+        # Citizen confirms resolved
+        resolved = await ComplaintService.confirm_resolved(
+            db_session, complaint.id, user.id
+        )
+        assert resolved.status == ComplaintStatus.RESOLVED.value
+        assert resolved.citizen_confirmed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_citizen_reopens_complaint(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        complaint = await create_test_complaint(db_session, user, category)
+
+        # Walk to CITIZEN_CONFIRMATION_PENDING
+        for status in [
+            ComplaintStatus.TRIAGE,
+            ComplaintStatus.ROUTED,
+            ComplaintStatus.IN_PROGRESS,
+            ComplaintStatus.RESPONSE_PROVIDED,
+            ComplaintStatus.IMPLEMENTATION_REPORTED,
+            ComplaintStatus.CITIZEN_CONFIRMATION_PENDING,
+        ]:
+            await ComplaintService.transition_status(
+                db_session, complaint.id, status, "admin", "1"
+            )
+
+        # Citizen says NOT resolved
+        reopened = await ComplaintService.reopen_complaint(
+            db_session, complaint.id, user.id, "Muammo hali hal bo'lmadi"
+        )
+        assert reopened.status == ComplaintStatus.REOPENED.value
+
+    @pytest.mark.asyncio
+    async def test_get_user_complaints(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        # Create 3 complaints
+        for _ in range(3):
+            await create_test_complaint(db_session, user, category)
+
+        complaints = await ComplaintService.get_user_complaints(db_session, user.id)
+        assert len(complaints) == 3
+
+    @pytest.mark.asyncio
+    async def test_duplicate_hint_detection(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        # Create an open complaint
+        await create_test_complaint(db_session, user, category)
+
+        # Check for duplicate hint
+        dup = await ComplaintService.check_duplicate_hint(
+            db_session, user.id, category.id
+        )
+        assert dup is not None
+        assert dup.tracking_id.startswith("FTMT-")
+
+    @pytest.mark.asyncio
+    async def test_no_duplicate_for_resolved(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        category = await create_test_category(db_session)
+        await db_session.commit()
+
+        complaint = await create_test_complaint(db_session, user, category)
+
+        # Walk to RESOLVED
+        for status in [
+            ComplaintStatus.TRIAGE,
+            ComplaintStatus.ROUTED,
+            ComplaintStatus.IN_PROGRESS,
+            ComplaintStatus.RESPONSE_PROVIDED,
+            ComplaintStatus.IMPLEMENTATION_REPORTED,
+            ComplaintStatus.CITIZEN_CONFIRMATION_PENDING,
+            ComplaintStatus.RESOLVED,
+        ]:
+            await ComplaintService.transition_status(
+                db_session, complaint.id, status, "admin", "1"
+            )
+
+        # No duplicate hint for resolved complaint
+        dup = await ComplaintService.check_duplicate_hint(
+            db_session, user.id, category.id
+        )
+        assert dup is None
+
+
+# ============================================================================
+# Rate Limit Tests
+# ============================================================================
+
+class TestRateLimitService:
+    """Test rate limiting."""
+
+    @pytest.mark.asyncio
+    async def test_first_action_allowed(self, db_session: AsyncSession):
+        allowed, count = await RateLimitService.check_rate_limit(
+            db_session, telegram_id=99999
+        )
+        assert allowed is True
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_increment_and_check(self, db_session: AsyncSession):
+        tid = 88888
+        await RateLimitService.increment_rate_limit(db_session, tid)
+        await db_session.commit()
+
+        allowed, count = await RateLimitService.check_rate_limit(db_session, tid)
+        assert allowed is True
+        assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_exceeded(self, db_session: AsyncSession):
+        tid = 77777
+        # Hit the limit (default is 3)
+        for _ in range(3):
+            await RateLimitService.increment_rate_limit(db_session, tid)
+            await db_session.commit()
+
+        allowed, count = await RateLimitService.check_rate_limit(db_session, tid)
+        assert allowed is False
+        assert count == 3
+
+
+# ============================================================================
+# Draft Service Tests
+# ============================================================================
+
+class TestDraftService:
+    """Test draft save/restore/delete."""
+
+    @pytest.mark.asyncio
+    async def test_save_and_get_draft(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        await db_session.commit()
+
+        draft_data = {"step": "name", "full_name": "Test User"}
+        await DraftService.save_draft(db_session, user.id, draft_data, "NAME")
+
+        draft = await DraftService.get_draft(db_session, user.id)
+        assert draft is not None
+        assert "Test User" in draft.draft_data
+        assert draft.conversation_state == "NAME"
+
+    @pytest.mark.asyncio
+    async def test_update_draft(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        await db_session.commit()
+
+        await DraftService.save_draft(db_session, user.id, {"step": 1}, "STEP1")
+        await DraftService.save_draft(db_session, user.id, {"step": 2}, "STEP2")
+
+        draft = await DraftService.get_draft(db_session, user.id)
+        assert draft is not None
+        assert '"step": 2' in draft.draft_data
+        assert draft.conversation_state == "STEP2"
+
+    @pytest.mark.asyncio
+    async def test_delete_draft(self, db_session: AsyncSession):
+        user = await create_test_user(db_session)
+        await db_session.commit()
+
+        await DraftService.save_draft(db_session, user.id, {"test": True})
+        await DraftService.delete_draft(db_session, user.id)
+
+        draft = await DraftService.get_draft(db_session, user.id)
+        assert draft is None
+
+
+# ============================================================================
+# i18n Tests
+# ============================================================================
+
+class TestI18n:
+    """Test internationalization."""
+
+    def test_get_uzbek_text(self):
+        from app.i18n import t
+        text = t("welcome", "uz")
+        assert "Farg'ona" in text
+
+    def test_get_russian_text(self):
+        from app.i18n import t
+        text = t("welcome", "ru")
+        assert "Ферганского" in text
+
+    def test_missing_key_returns_placeholder(self):
+        from app.i18n import t
+        text = t("nonexistent_key", "uz")
+        assert "[Missing:" in text
+
+    def test_format_parameters(self):
+        from app.i18n import t
+        text = t("rate_limit_exceeded", "uz", max=3)
+        assert "3" in text
+
+    def test_status_labels_exist(self):
+        from app.i18n import get_status_label
+        from app.models import ComplaintStatus
+        for status in ComplaintStatus:
+            label_uz = get_status_label(status.value, "uz")
+            label_ru = get_status_label(status.value, "ru")
+            assert "[Missing:" not in label_uz, f"Missing UZ label for {status.value}"
+            assert "[Missing:" not in label_ru, f"Missing RU label for {status.value}"
+
+    def test_type_labels_exist(self):
+        from app.i18n import get_type_label
+        from app.models import ComplaintType
+        for ctype in ComplaintType:
+            label_uz = get_type_label(ctype.value, "uz")
+            label_ru = get_type_label(ctype.value, "ru")
+            assert "[Missing:" not in label_uz
+            assert "[Missing:" not in label_ru
+
+    def test_consent_text_has_placeholder_warning(self):
+        from app.i18n import t
+        for lang in ["uz", "ru"]:
+            text = t("consent_text", lang)
+            # Must contain warning about not being approved by lawyer
+            assert "yurist" in text.lower() or "юрист" in text.lower()
+
+    def test_complaint_receipt_has_legal_disclaimer(self):
+        from app.i18n import t
+        for lang in ["uz", "ru"]:
+            text = t("complaint_submitted", lang, tracking_id="TEST-001", date="2026-01-01", type="ariza", category="Test")
+            # Must contain disclaimer about legal status
+            assert "hokimlik" in text.lower() or "хокимият" in text.lower()
+
+
+# ============================================================================
+# Logging Redaction Tests
+# ============================================================================
+
+class TestLoggingRedaction:
+    """Test PII redaction in logs."""
+
+    def test_phone_redaction(self):
+        from app.logging_config import PIIRedactingFormatter
+        import logging
+        formatter = PIIRedactingFormatter("%(message)s")
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg="User phone: +998901234567", args=None, exc_info=None,
+        )
+        formatted = formatter.format(record)
+        assert "+998901234567" not in formatted
+        assert "[PHONE_REDACTED]" in formatted
+
+    def test_pii_field_sanitization(self):
+        from app.logging_config import StructuredLogger
+        logger = StructuredLogger("test")
+        sanitized = logger._sanitize_kwargs({
+            "full_name": "John Doe",
+            "phone": "+998901234567",
+            "complaint_id": 123,
+        })
+        assert sanitized["full_name"] == "[PII_REDACTED]"
+        assert sanitized["phone"] == "[PII_REDACTED]"
+        assert sanitized["complaint_id"] == 123  # Non-PII preserved

@@ -1,0 +1,170 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Complaint Detail - FTMT Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Complaint: {{ complaint.tracking_id }}</h1>
+    <div>
+        <span class="badge bg-primary fs-5">{{ complaint.status }}</span>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">Details</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ complaint.title }}</h5>
+                <p class="card-text">{{ complaint.complaint_text }}</p>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Citizen:</strong> {{ complaint.full_name }}</p>
+                        <p><strong>Phone:</strong> {{ complaint.phone_number }}</p>
+                        <p><strong>MFY / Address:</strong> {{ complaint.mfy_area_id }} / {{ complaint.address_detail }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Type:</strong> {{ complaint.complaint_type }}</p>
+                        <p><strong>Language:</strong> {{ complaint.complaint_language }}</p>
+                        <p><strong>Created:</strong> {{ complaint.created_at | tashkent_tz }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">Responses</div>
+            <div class="card-body">
+                {% for r in responses %}
+                <div class="mb-3 p-3 border rounded">
+                    <p><strong>Date:</strong> {{ r.created_at | tashkent_tz }}</p>
+                    <p><strong>Text:</strong> {{ r.response_text }}</p>
+                    {% if r.actions_taken %}<p><strong>Actions:</strong> {{ r.actions_taken }}</p>{% endif %}
+                </div>
+                {% else %}
+                <p>No responses yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">Status Timeline</div>
+            <div class="card-body">
+                <ul class="list-group">
+                    {% for e in events %}
+                    <li class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ e.to_status }}</h6>
+                            <small>{{ e.created_at | tashkent_tz }}</small>
+                        </div>
+                        <p class="mb-1">{{ e.reason or 'No reason provided' }}</p>
+                        <small>By: {{ e.actor_type }} ({{ e.actor_id }})</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        {% if admin.role in ['super_admin', 'district_supervisor'] and complaint.status == 'submitted' %}
+        <div class="card mb-4">
+            <div class="card-header">Actions</div>
+            <div class="card-body">
+                <form action="/admin/complaints/{{ complaint.id }}/triage" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-warning w-100">Send to Triage</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if admin.role in ['super_admin', 'district_supervisor', 'agency_head'] %}
+        <div class="card mb-4">
+            <div class="card-header">Assign Organization</div>
+            <div class="card-body">
+                <form action="/admin/complaints/{{ complaint.id }}/assign" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label>Organization</label>
+                        <select name="organization_id" class="form-select" required>
+                            {% for org in organizations %}
+                            <option value="{{ org.id }}">{{ org.name_uz }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Notes (Optional)</label>
+                        <textarea name="notes" class="form-control" rows="2"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Assign</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if admin.role != 'auditor' %}
+        <div class="card mb-4">
+            <div class="card-header">Change Status</div>
+            <div class="card-body">
+                <form action="/admin/complaints/{{ complaint.id }}/status" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label>New Status</label>
+                        <select name="new_status" class="form-select" required>
+                            {% for st in valid_transitions %}
+                            <option value="{{ st }}">{{ st }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Reason</label>
+                        <textarea name="reason" class="form-control" rows="2"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-secondary w-100">Update Status</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">Add Response</div>
+            <div class="card-body">
+                <form action="/admin/complaints/{{ complaint.id }}/respond" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label>Response Text</label>
+                        <textarea name="response_text" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label>Actions Taken</label>
+                        <textarea name="actions_taken" class="form-control" rows="2"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Submit Response</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if admin.role in ['super_admin', 'district_supervisor'] %}
+        <div class="card mb-4">
+            <div class="card-header">Extend Deadline</div>
+            <div class="card-body">
+                <form action="/admin/complaints/{{ complaint.id }}/extend-deadline" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label>Days</label>
+                        <input type="number" name="days" class="form-control" min="1" value="5" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Reason</label>
+                        <textarea name="reason" class="form-control" rows="2" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-danger w-100">Extend</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

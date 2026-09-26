@@ -1,0 +1,56 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Audit Log - FTMT Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Audit Log</h1>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Date (UZT)</th>
+                <th>Action</th>
+                <th>Entity Type</th>
+                <th>Entity ID</th>
+                <th>Actor Type</th>
+                <th>Actor ID</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in events %}
+            <tr>
+                <td>{{ e.created_at | tashkent_tz }}</td>
+                <td>{{ e.action }}</td>
+                <td>{{ e.entity_type }}</td>
+                <td>{{ e.entity_id }}</td>
+                <td>{{ e.actor_type }}</td>
+                <td>{{ e.actor_id }}</td>
+                <td>
+                    {% if e.new_value %}
+                        <small class="text-muted">{{ e.new_value }}</small>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center">No audit events found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if total_pages > 1 %}
+<nav>
+    <ul class="pagination">
+        {% for p in range(1, total_pages + 1) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
