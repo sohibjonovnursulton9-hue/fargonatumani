@@ -1,0 +1,40 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Mahalla va hududlar{% endblock %}
+{% block content %}
+<div class="page-heading"><div><h1>Mahalla va hududlar</h1><p class="page-subtitle">Fuqarolar murojaat formasida tanlaydigan hududlar.</p></div><a class="btn btn-primary" href="/admin/mfy/import">58 ta MFY ro‘yxatini ko‘rib chiqish</a></div>
+<p class="text-muted">Fuqaro murojaat yuborayotganda tanlaydigan MFY nomlarini o‘zbek lotin, o‘zbek kirill va rus tilida to‘liq kiriting.</p>
+
+<div class="card mb-4"><div class="card-header">Yangi MFY</div><div class="card-body">
+<form method="post" action="/admin/mfy" class="row g-2" data-admin-feedback>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="col-md-3"><input class="form-control" name="name_uz" placeholder="To‘liq nomi — lotin" required maxlength="255"></div>
+    <div class="col-md-3"><input class="form-control" name="name_uz_cyrillic" placeholder="Тўлиқ номи — кирилл" required maxlength="255"></div>
+    <div class="col-md-3"><input class="form-control" name="name_ru" placeholder="Полное название — русский" required maxlength="255"></div>
+    <div class="col-md-2"><input class="form-control" name="district" value="Farg'ona tumani" required maxlength="255"></div>
+    <div class="col-md-1"><input class="form-control" name="sort_order" type="number" value="0" title="Tartib"></div>
+    <div class="col-12"><button class="btn btn-primary">MFY qo‘shish</button></div>
+</form></div></div>
+
+<h2 class="h5">Mavjud hududlar</h2>
+<div class="table-responsive"><table class="table table-striped align-middle"><thead><tr><th>Lotincha to‘liq nom</th><th>Кириллча тўлиқ ном</th><th>Русское название</th><th>Tuman</th><th>Holat</th><th>Amal</th></tr></thead><tbody>
+{% for area in areas %}
+<tr><td colspan="6">
+<form method="post" action="/admin/mfy/{{ area.id }}" class="row g-2 mb-2" data-admin-feedback>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="col-md-3"><input class="form-control" name="name_uz" value="{{ area.name_uz }}" required></div>
+    <div class="col-md-3"><input class="form-control" name="name_uz_cyrillic" value="{{ area.name_uz_cyrillic }}" required></div>
+    <div class="col-md-3"><input class="form-control" name="name_ru" value="{{ area.name_ru }}" required></div>
+    <div class="col-md-2"><input class="form-control" name="district" value="{{ area.district }}" required></div>
+    <div class="col-md-1"><input class="form-control" name="sort_order" type="number" value="{{ area.sort_order }}"></div>
+    <div class="col-md-3"><select class="form-select" name="is_provisional"><option value="true" {% if area.is_provisional %}selected{% endif %}>Hokimlik tasdig‘i kutilmoqda</option><option value="false" {% if not area.is_provisional %}selected{% endif %}>Rasmiy manba tasdiqlangan</option></select></div>
+    <div class="col-12 d-flex gap-2 align-items-center"><button class="btn btn-sm btn-primary">Saqlash</button><span class="badge {% if area.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{% if area.is_active %}Faol{% else %}Nofaol{% endif %}</span>{% if area.is_provisional %}<span class="badge text-bg-warning">Tasdiq kutilmoqda</span>{% endif %}</div>
+</form>
+<form method="post" action="/admin/mfy/{{ area.id }}/status" data-admin-feedback>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="is_active" value="{% if area.is_active %}false{% else %}true{% endif %}">
+    <button class="btn btn-sm btn-outline-secondary">{% if area.is_active %}Faolsizlantirish{% else %}Faollashtirish{% endif %}</button>
+</form>
+</td></tr>
+{% else %}<tr><td colspan="6" class="text-muted">Hali MFY kiritilmagan.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

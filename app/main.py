@@ -9,7 +9,7 @@ import asyncio
 import sys
 
 from app.config import get_settings
-from app.database import close_db, create_all_tables, init_db
+from app.database import close_db, init_db
 from app.logging_config import setup_logging, get_logger
 
 
@@ -26,20 +26,17 @@ async def main() -> None:
     logger.info("Initializing database...")
     await init_db(settings.database_url)
 
-    # Create tables (development only — use Alembic migrations in production)
-    if settings.is_development:
-        logger.info("Creating database tables (dev mode)...")
-        await create_all_tables()
+    # Demo catalogs are provisional and must be opted into explicitly in development.
+    if settings.seed_demo_data and settings.is_development:
+        logger.info("Seeding explicitly enabled development demo data...")
+        from app.seed import seed_demo_data
+        await seed_demo_data()
+    elif settings.seed_demo_data:
+        logger.error("Demo seeding is disabled outside development environments")
 
-    # Seed demo data
-    logger.info("Checking for seed data...")
-    from app.seed import seed_demo_data
-    await seed_demo_data()
-
-    # Start the bot
-    logger.info("Starting Telegram bot...")
-    from app.bot import run_bot
     try:
+        logger.info("Starting Telegram bot...")
+        from app.bot import run_bot
         await run_bot()
     finally:
         await close_db()

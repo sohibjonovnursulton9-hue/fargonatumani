@@ -14,14 +14,21 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta
-from typing import Any, Sequence
+import asyncio
+import math
+import statistics
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+from typing import Any, AsyncIterator, Sequence
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.staff_notifications import queue_supervisor_notice, queue_assignment_notice
 from app.config import get_settings
 from app.logging_config import get_logger
+from app.i18n import get_status_label
 from app.models import (
     VALID_TRANSITIONS,
     AdminUser,
@@ -38,6 +45,7 @@ from app.models import (
     Deadline,
     DeadlineExtension,
     MFYArea,
+    Notification,
     Organization,
     RateLimit,
     Response,
@@ -48,6 +56,7 @@ from app.models import (
 )
 
 logger = get_logger(__name__)
+_rate_limit_locks: dict[tuple[int, str], asyncio.Lock] = {}
 
 
 # ============================================================================
@@ -77,6 +86,9 @@ class UserService:
             )
             session.add(user)
             await session.flush()
+            await queue_supervisor_notice(
+                session, "citizen_registered", "👤 Botga yangi foydalanuvchi qo‘shildi."
+            )
             logger.info(
                 "New user created",
                 user_id=user.id,
@@ -120,21 +132,21 @@ class UserService:
     async def has_valid_consent(
         session: AsyncSession, user_id: int, current_version: str
     ) -> bool:
-        """Check if user has accepted the current consent version."""
+        """Check the latest decision for the current consent version."""
         stmt = (
             select(ConsentRecord)
             .where(
                 and_(
                     ConsentRecord.user_id == user_id,
                     ConsentRecord.consent_version == current_version,
-                    ConsentRecord.accepted == True,  # noqa: E712
                 )
             )
-            .order_by(ConsentRecord.accepted_at.desc())
+            .order_by(ConsentRecord.accepted_at.desc(), ConsentRecord.id.desc())
             .limit(1)
         )
         result = await session.execute(stmt)
-        return result.scalar_one_or_none() is not None
+        latest_decision = result.scalar_one_or_none()
+        return bool(latest_decision and latest_decision.accepted)
 
 
 # ============================================================================
@@ -149,30 +161,85 @@ class RateLimitService:
         session: AsyncSession,
         telegram_id: int,
         action: str = "complaint",
+        max_per_day: int | None = None,
     ) -> tuple[bool, int]:
         """
         Check if user is within rate limit.
         Returns (is_allowed, current_count).
         """
-        settings = get_settings()
-        max_per_day = settings.max_complaints_per_day
-        now = utcnow()
-        window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        limit = max_per_day if max_per_day is not None else get_settings().max_complaints_per_day
+        count = await RateLimitService._count_recent(session, telegram_id, action)
+        return count < limit, count
 
-        stmt = select(RateLimit).where(
+    @staticmethod
+    async def _count_recent(
+        session: AsyncSession, telegram_id: int, action: str
+    ) -> int:
+        cutoff = utcnow() - timedelta(hours=24)
+        stmt = select(func.coalesce(func.sum(RateLimit.count), 0)).where(
             and_(
                 RateLimit.telegram_id == telegram_id,
                 RateLimit.action == action,
-                RateLimit.window_start == window_start,
+                RateLimit.window_start > cutoff,
             )
         )
-        result = await session.execute(stmt)
-        record = result.scalar_one_or_none()
+        return int((await session.execute(stmt)).scalar_one())
 
-        if record is None:
-            return True, 0
+    @staticmethod
+    @asynccontextmanager
+    async def reserve_complaint_slot(
+        session: AsyncSession,
+        telegram_id: int,
+        action: str = "complaint",
+        max_per_day: int | None = None,
+    ) -> AsyncIterator[tuple[bool, int]]:
+        """Reserve one rolling 24-hour slot until the caller commits or rolls back."""
+        dialect = session.get_bind().dialect.name
+        lock = None
+        if dialect == "sqlite":
+            lock = _rate_limit_locks.setdefault((telegram_id, action), asyncio.Lock())
+            await lock.acquire()
 
-        return record.count < max_per_day, record.count
+        try:
+            if dialect == "postgresql":
+                lock_key = int.from_bytes(
+                    hashlib.sha256(f"ftmt:{action}:{telegram_id}".encode()).digest()[:8],
+                    byteorder="big",
+                    signed=True,
+                )
+                await session.execute(select(func.pg_advisory_xact_lock(lock_key)))
+
+            count = await RateLimitService._count_recent(session, telegram_id, action)
+            limit = max_per_day if max_per_day is not None else get_settings().max_complaints_per_day
+            if count >= limit:
+                yield False, count
+                return
+
+            now = utcnow()
+            stmt = select(RateLimit).where(
+                and_(
+                    RateLimit.telegram_id == telegram_id,
+                    RateLimit.action == action,
+                    RateLimit.window_start == now,
+                )
+            )
+            existing = (await session.execute(stmt)).scalar_one_or_none()
+            if existing is not None:
+                existing.count += 1
+            else:
+                session.add(
+                    RateLimit(
+                        telegram_id=telegram_id,
+                        action=action,
+                        window_start=now,
+                        count=1,
+                    )
+                )
+            await session.flush()
+            yield True, count + 1
+        finally:
+            if lock is not None and lock.locked():
+                lock.release()
 
     @staticmethod
     async def increment_rate_limit(
@@ -182,28 +249,25 @@ class RateLimitService:
     ) -> None:
         """Increment rate limit counter."""
         now = utcnow()
-        window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
         stmt = select(RateLimit).where(
             and_(
                 RateLimit.telegram_id == telegram_id,
                 RateLimit.action == action,
-                RateLimit.window_start == window_start,
+                RateLimit.window_start == now,
             )
         )
-        result = await session.execute(stmt)
-        record = result.scalar_one_or_none()
-
-        if record is None:
-            record = RateLimit(
-                telegram_id=telegram_id,
-                action=action,
-                window_start=window_start,
-                count=1,
-            )
-            session.add(record)
+        existing = (await session.execute(stmt)).scalar_one_or_none()
+        if existing is not None:
+            existing.count += 1
         else:
-            record.count += 1
+            session.add(
+                RateLimit(
+                    telegram_id=telegram_id,
+                    action=action,
+                    window_start=now,
+                    count=1,
+                )
+            )
         await session.flush()
 
 
@@ -228,6 +292,9 @@ class ComplaintService:
         mfy_area_id: int | None = None,
         address_detail: str | None = None,
         birth_date: str | None = None,
+        passport_data: str | None = None,
+        deadline_days: int | None = None,
+        commit: bool = True,
     ) -> Complaint:
         """
         Create and submit a new complaint in a single transaction.
@@ -258,6 +325,7 @@ class ComplaintService:
             mfy_area_id=mfy_area_id,
             address_detail=address_detail,
             birth_date=birth_date,
+            passport_data=passport_data,
             title=title,
             complaint_text=complaint_text,
             status=ComplaintStatus.SUBMITTED.value,
@@ -279,11 +347,15 @@ class ComplaintService:
 
         # Create deadline
         settings = get_settings()
-        deadline_days = {
+        configured_deadline_days = {
             ComplaintType.ARIZA.value: settings.default_ariza_deadline_days,
             ComplaintType.SHIKOYAT.value: settings.default_shikoyat_deadline_days,
             ComplaintType.TAKLIF.value: settings.default_taklif_deadline_days,
         }.get(complaint_type, 15)
+        if deadline_days is None:
+            deadline_days = configured_deadline_days
+        elif type(deadline_days) is not int or not 1 <= deadline_days <= 365:
+            raise ValueError("deadline_days must be an integer from 1 to 365")
 
         deadline = Deadline(
             complaint_id=complaint.id,
@@ -308,7 +380,16 @@ class ComplaintService:
         )
         session.add(audit)
 
-        await session.commit()
+        await queue_supervisor_notice(
+            session, "complaint_received",
+            f"🔔 Yangi murojaat tushdi.\nTracking raqami: {tracking_id}\n"
+            "Admin panelida ko‘rib chiqing va mas’ul idoraga biriktiring.",
+            complaint_id=complaint.id,
+        )
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
 
         logger.info(
             "Complaint created",
@@ -329,6 +410,8 @@ class ComplaintService:
         actor_type: str,
         actor_id: str | None = None,
         reason: str | None = None,
+        notify_citizen: bool = True,
+        commit: bool = True,
     ) -> Complaint:
         """
         Transition complaint to a new status with validation.
@@ -341,6 +424,10 @@ class ComplaintService:
 
         if complaint is None:
             raise ValueError(f"Complaint {complaint_id} not found")
+        if complaint.deleted_at is not None:
+            raise ValueError("Deleted complaints cannot be changed")
+        if complaint.archived_at is not None:
+            raise ValueError("Archived complaints cannot be changed")
 
         current_status = ComplaintStatus(complaint.status)
         valid_next = VALID_TRANSITIONS.get(current_status, set())
@@ -381,7 +468,35 @@ class ComplaintService:
         )
         session.add(audit)
 
-        await session.commit()
+        user = await session.get(User, complaint.user_id) if notify_citizen else None
+        if user and user.telegram_id:
+            language = user.interface_language or "uz"
+            label = get_status_label(new_status.value, language)
+            is_confirmation = new_status == ComplaintStatus.CITIZEN_CONFIRMATION_PENDING
+            if language == "ru":
+                message = (
+                    f"Обращение {complaint.tracking_id} ждёт вашего подтверждения: "
+                    "вопрос решён или его нужно пересмотреть?"
+                    if is_confirmation
+                    else f"Статус обращения {complaint.tracking_id} изменён: {label}"
+                )
+            else:
+                message = (
+                    f"{complaint.tracking_id} raqamli murojaat bo‘yicha tasdiqingiz kerak: "
+                    "masala hal bo‘ldimi yoki qayta ko‘rib chiqilsinmi?"
+                    if is_confirmation
+                    else f"{complaint.tracking_id} raqamli murojaat holati o‘zgardi: {label}"
+                )
+            session.add(Notification(
+                complaint_id=complaint_id,
+                recipient_telegram_id=user.telegram_id,
+                notification_type="citizen_confirmation" if is_confirmation else "status_update",
+                message_text=message,
+                language=language,
+            ))
+
+        if commit:
+            await session.commit()
 
         logger.info(
             "Complaint status changed",
@@ -397,7 +512,9 @@ class ComplaintService:
         session: AsyncSession, tracking_id: str
     ) -> Complaint | None:
         """Get complaint by citizen-facing tracking ID."""
-        stmt = select(Complaint).where(Complaint.tracking_id == tracking_id)
+        stmt = select(Complaint).where(
+            Complaint.tracking_id == tracking_id, Complaint.deleted_at.is_(None)
+        )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -408,7 +525,11 @@ class ComplaintService:
         """Get all complaints for a user, newest first."""
         stmt = (
             select(Complaint)
-            .where(Complaint.user_id == user_id)
+            .where(
+                Complaint.user_id == user_id,
+                Complaint.archived_at.is_(None),
+                Complaint.deleted_at.is_(None),
+            )
             .order_by(Complaint.created_at.desc())
         )
         result = await session.execute(stmt)
@@ -467,6 +588,8 @@ class ComplaintService:
                 and_(
                     Complaint.user_id == user_id,
                     Complaint.category_id == category_id,
+                    Complaint.archived_at.is_(None),
+                    Complaint.deleted_at.is_(None),
                     ~Complaint.status.in_(terminal_values),
                 )
             )
@@ -531,14 +654,17 @@ class DraftService:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def delete_draft(session: AsyncSession, user_id: int) -> None:
+    async def delete_draft(session: AsyncSession, user_id: int, *, commit: bool = True) -> None:
         """Delete all drafts for user."""
         stmt = select(ComplaintDraft).where(ComplaintDraft.user_id == user_id)
         result = await session.execute(stmt)
         drafts = result.scalars().all()
         for draft in drafts:
             await session.delete(draft)
-        await session.commit()
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
 
 
 # ============================================================================
@@ -618,8 +744,27 @@ class AssignmentService:
         assigned_to_id: int | None = None,
         is_primary: bool = True,
         notes: str | None = None,
+        commit: bool = True,
     ) -> Assignment:
         """Assign a complaint to an organization/executor."""
+        complaint = await session.get(Complaint, complaint_id)
+        if complaint is None:
+            raise ValueError(f"Complaint {complaint_id} not found")
+
+        prior_primary: list[Assignment] = []
+        if is_primary:
+            prior_assignments = (await session.execute(
+                select(Assignment).where(
+                    Assignment.complaint_id == complaint_id,
+                    Assignment.is_primary.is_(True),
+                    Assignment.is_active.is_(True),
+                ).with_for_update()
+            )).scalars().all()
+            prior_primary = prior_assignments
+            for prior in prior_assignments:
+                prior.is_active = False
+                prior.unassigned_at = utcnow()
+
         assignment = Assignment(
             complaint_id=complaint_id,
             organization_id=organization_id,
@@ -645,7 +790,44 @@ class AssignmentService:
         )
         session.add(audit)
 
-        await session.commit()
+        # Queue a citizen message only when the responsible organization changes.
+        # The notification worker delivers it after the assignment transaction commits.
+        organization_changed = not any(
+            prior.organization_id == organization_id for prior in prior_primary
+        )
+        if is_primary and organization_changed:
+            user = await session.get(User, complaint.user_id)
+            organization = await session.get(Organization, organization_id)
+            if user and user.telegram_id and organization:
+                language = "ru" if user.interface_language == "ru" else "uz"
+                organization_name = organization.name_ru if language == "ru" else organization.name_uz
+                if language == "ru":
+                    message = (
+                        f"📬 Ваше обращение направлено в ответственный орган.\n"
+                        f"📋 Номер: {complaint.tracking_id}\n"
+                        f"🏢 Ответственный орган: {organization_name}\n"
+                        "Статус можно проверить в разделе «Мои обращения»."
+                    )
+                else:
+                    message = (
+                        f"📬 Murojaatingiz mas'ul idoraga yo'naltirildi.\n"
+                        f"📋 Tracking raqami: {complaint.tracking_id}\n"
+                        f"🏢 Mas'ul idora: {organization_name}\n"
+                        "Holatini botdagi «Murojaatlarim» bo'limida kuzatishingiz mumkin."
+                    )
+                session.add(Notification(
+                    complaint_id=complaint_id,
+                    recipient_telegram_id=user.telegram_id,
+                    notification_type="complaint_routed",
+                    message_text=message,
+                    language=language,
+                ))
+
+        await queue_assignment_notice(session, complaint, organization_id, assigned_to_id)
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
         return assignment
 
 
@@ -691,6 +873,42 @@ class ResponseService:
         )
         session.add(audit)
 
+        recipient = (await session.execute(
+            select(User.telegram_id, User.interface_language, Complaint.tracking_id)
+            .join(Complaint, Complaint.user_id == User.id)
+            .where(Complaint.id == complaint_id)
+        )).one_or_none()
+        if recipient and recipient.telegram_id:
+            language = recipient.interface_language or "uz"
+            header = (
+                f"Ответ по обращению {recipient.tracking_id}:"
+                if language == "ru"
+                else f"{recipient.tracking_id} murojaatiga javob:"
+            )
+            # Telegram limits a message to 4096 UTF-16 code units. Queue every
+            # part so the full official response is delivered and retryable.
+            parts: list[str] = []
+            current: list[str] = []
+            units = 0
+            for char in response_text:
+                width = 2 if ord(char) > 0xFFFF else 1
+                if current and units + width > 3000:
+                    parts.append("".join(current))
+                    current, units = [], 0
+                current.append(char)
+                units += width
+            if current:
+                parts.append("".join(current))
+            for index, part in enumerate(parts, start=1):
+                prefix = f"{header} ({index}/{len(parts)})" if len(parts) > 1 else header
+                session.add(Notification(
+                    complaint_id=complaint_id,
+                    recipient_telegram_id=recipient.telegram_id,
+                    notification_type="response",
+                    message_text=f"{prefix}\n\n{part}",
+                    language=language,
+                ))
+
         await session.commit()
         return response
 
@@ -721,6 +939,8 @@ class DeadlineService:
                     Deadline.current_deadline <= threshold,
                     Deadline.current_deadline > now,
                     Deadline.warning_sent == False,  # noqa: E712
+                    Complaint.archived_at.is_(None),
+                    Complaint.deleted_at.is_(None),
                     ~Complaint.status.in_(terminal_values),
                 )
             )
@@ -744,6 +964,8 @@ class DeadlineService:
             .where(
                 and_(
                     Deadline.current_deadline < now,
+                    Complaint.archived_at.is_(None),
+                    Complaint.deleted_at.is_(None),
                     ~Complaint.status.in_(terminal_values),
                 )
             )
@@ -759,7 +981,11 @@ class DeadlineService:
         reason: str,
         approved_by_id: int,
     ) -> DeadlineExtension:
-        """Extend a deadline with required reason and approver."""
+        """Extend a deadline with a bounded reason and queue citizen notice."""
+        reason = reason.strip() if isinstance(reason, str) else ""
+        if not reason or len(reason) > 1000:
+            raise ValueError("Extension reason must contain 1–1000 characters")
+
         stmt = select(Deadline).where(Deadline.id == deadline_id)
         result = await session.execute(stmt)
         deadline = result.scalar_one_or_none()
@@ -767,14 +993,25 @@ class DeadlineService:
         if deadline is None:
             raise ValueError(f"Deadline {deadline_id} not found")
 
+        previous_deadline = deadline.current_deadline
+        if previous_deadline.tzinfo is None:
+            previous_deadline = previous_deadline.replace(tzinfo=timezone.utc)
+        if new_deadline.tzinfo is None:
+            new_deadline = new_deadline.replace(tzinfo=timezone.utc)
+        if new_deadline <= previous_deadline:
+            raise ValueError("New deadline must be later than the current deadline")
+        if new_deadline > previous_deadline + timedelta(days=365):
+            raise ValueError("A single extension cannot exceed 365 days")
+
         extension = DeadlineExtension(
             deadline_id=deadline_id,
-            previous_deadline=deadline.current_deadline,
+            previous_deadline=previous_deadline,
             new_deadline=new_deadline,
             reason=reason,
             approved_by_id=approved_by_id,
         )
         session.add(extension)
+        await session.flush()
 
         deadline.current_deadline = new_deadline
 
@@ -793,6 +1030,32 @@ class DeadlineService:
         )
         session.add(audit)
 
+        complaint = await session.get(Complaint, deadline.complaint_id)
+        user = await session.get(User, complaint.user_id) if complaint else None
+        if user and user.telegram_id:
+            deadline_label = new_deadline.astimezone(
+                ZoneInfo("Asia/Tashkent")
+            ).strftime("%d.%m.%Y")
+            language = user.interface_language or "uz"
+            if language == "ru":
+                message = (
+                    f"Срок рассмотрения обращения {complaint.tracking_id} продлён. "
+                    f"Новый срок: {deadline_label}."
+                )
+            else:
+                message = (
+                    f"{complaint.tracking_id} raqamli murojaatni ko‘rib chiqish "
+                    f"muddati uzaytirildi. Yangi muddat: {deadline_label}."
+                )
+            session.add(Notification(
+                complaint_id=complaint.id,
+                deadline_extension_id=extension.id,
+                recipient_telegram_id=user.telegram_id,
+                notification_type="deadline_extended",
+                message_text=message,
+                language=language,
+            ))
+
         await session.commit()
         return extension
 
@@ -810,11 +1073,15 @@ class StatisticsService:
         date_from: datetime | None = None,
         date_to: datetime | None = None,
         category_id: int | None = None,
+        organization_id: int | None = None,
+        assigned_to_id: int | None = None,
     ) -> dict[str, int]:
         """Get complaint counts by status."""
         stmt = select(
             Complaint.status,
             func.count(Complaint.id),
+        ).where(
+            Complaint.archived_at.is_(None), Complaint.deleted_at.is_(None)
         ).group_by(Complaint.status)
 
         if date_from:
@@ -823,6 +1090,14 @@ class StatisticsService:
             stmt = stmt.where(Complaint.created_at <= date_to)
         if category_id:
             stmt = stmt.where(Complaint.category_id == category_id)
+        if organization_id is not None:
+            assignment_scope = select(Assignment.complaint_id).where(
+                Assignment.organization_id == organization_id,
+                Assignment.is_active.is_(True),
+            )
+            if assigned_to_id is not None:
+                assignment_scope = assignment_scope.where(Assignment.assigned_to_id == assigned_to_id)
+            stmt = stmt.where(Complaint.id.in_(assignment_scope))
 
         result = await session.execute(stmt)
         counts = {row[0]: row[1] for row in result.all()}
@@ -842,6 +1117,8 @@ class StatisticsService:
     @staticmethod
     async def get_resolution_time_stats(
         session: AsyncSession,
+        organization_id: int | None = None,
+        assigned_to_id: int | None = None,
     ) -> dict[str, Any]:
         """
         Get resolution time statistics.
@@ -854,13 +1131,23 @@ class StatisticsService:
             and_(
                 Complaint.resolved_at.isnot(None),
                 Complaint.submitted_at.isnot(None),
+                Complaint.archived_at.is_(None),
+                Complaint.deleted_at.is_(None),
             )
         )
+        if organization_id is not None:
+            assignment_scope = select(Assignment.complaint_id).where(
+                Assignment.organization_id == organization_id,
+                Assignment.is_active.is_(True),
+            )
+            if assigned_to_id is not None:
+                assignment_scope = assignment_scope.where(Assignment.assigned_to_id == assigned_to_id)
+            stmt = stmt.where(Complaint.id.in_(assignment_scope))
         result = await session.execute(stmt)
         rows = result.all()
 
         if not rows:
-            return {"count": 0, "median_hours": None, "p90_hours": None}
+            return {"count": 0, "median_hours": None, "p90_hours": None, "p95_hours": None}
 
         # Calculate resolution times in hours
         times = []
@@ -874,8 +1161,9 @@ class StatisticsService:
 
         return {
             "count": count,
-            "median_hours": round(times[count // 2], 1) if times else None,
+            "median_hours": round(statistics.median(times), 1) if times else None,
             "p90_hours": round(times[int(count * 0.9)], 1) if times else None,
+            "p95_hours": round(times[math.ceil(count * 0.95) - 1], 1) if times else None,
             "min_hours": round(times[0], 1) if times else None,
             "max_hours": round(times[-1], 1) if times else None,
         }

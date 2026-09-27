@@ -21,9 +21,9 @@ TEXTS: dict[str, dict[str, str]] = {
     # --- Start & Language Selection ---
     "welcome": {
         "uz": "🏛 *Farg'ona tuman hokimligi murojaatlar tizimi*\n\n"
-              "Xush kelibsiz! Iltimos, interfeys tilini tanlang:",
+              "Xush kelibsiz! Quyidagi menyudan kerakli bo‘limni tanlang:",
         "ru": "🏛 *Система обращений хокимията Ферганского района*\n\n"
-              "Добро пожаловать! Пожалуйста, выберите язык интерфейса:",
+              "Добро пожаловать! Выберите нужный раздел в меню ниже:",
     },
     "language_selected": {
         "uz": "✅ Interfeys tili: O'zbekcha",
@@ -151,12 +151,10 @@ TEXTS: dict[str, dict[str, str]] = {
     "enter_phone": {
         "uz": "📱 *Telefon raqamingizni kiriting:*\n\n"
               "Formatda: +998XXXXXXXXX\n"
-              "Yoki telefon raqamingizni ulashish tugmasini bosing.\n\n"
-              "⚠️ _Raqam hozirda OTP orqali tasdiqlanmaydi._",
+              "Telefon egasini tekshirish uchun pastdagi 'Telefon raqamni ulashish' tugmasidan foydalaning.",
         "ru": "📱 *Введите ваш номер телефона:*\n\n"
               "Формат: +998XXXXXXXXX\n"
-              "Или нажмите кнопку 'Поделиться контактом'.\n\n"
-              "⚠️ _Номер в настоящее время не проверяется через OTP._",
+              "Чтобы подтвердить владельца номера, используйте кнопку 'Поделиться контактом'.",
     },
     "btn_share_contact": {
         "uz": "📲 Telefon raqamni ulashish",
@@ -166,29 +164,45 @@ TEXTS: dict[str, dict[str, str]] = {
         "uz": "❌ Telefon raqam noto'g'ri formatda. +998 bilan boshlanuvchi 12 raqamli bo'lishi kerak.",
         "ru": "❌ Неверный формат номера. Должен начинаться с +998 и содержать 12 цифр.",
     },
+    "own_contact_required": {
+        "uz": "Iltimos, aynan o'zingizning raqamingizni Telegram'dagi 'Telefon raqamni ulashish' tugmasi orqali yuboring.",
+        "ru": "Отправьте именно свой номер с помощью кнопки Telegram «Поделиться контактом».",
+    },
+    "enter_birth_date": {
+        "uz": "📅 *Tug'ilgan yili, oyi va kuni:*\n\nSanani quyidagi shaklda kiriting. Masalan: 01.01.1990\n\n_Bu maydon ixtiyoriy. O'tkazib yuborish mumkin._",
+        "ru": "📅 *Год, месяц и день рождения:*\n\nНапример: 01.01.1990\n\n_Это поле необязательное. Можно пропустить._",
+    },
+    "enter_passport": {
+        "uz": "🛂 *Pasport seriya raqami:*\n\nPasport seriyangiz va raqamini kiriting. Masalan: AA1234567\n\n_Bu maydon ixtiyoriy. O'tkazib yuborish mumkin._",
+        "ru": "🛂 *Серия и номер паспорта:*\n\nНапример: AA1234567\n\n_Это поле необязательное. Можно пропустить._",
+    },
+    "btn_skip": {
+        "uz": "⏭ O'tkazib yuborish",
+        "ru": "⏭ Пропустить",
+    },
 
     # --- Address ---
     "select_mfy": {
-        "uz": "🏘 *Mahallangizni tanlang:*\n\n"
-              "⚠️ _Bu ro'yxat DEMO ma'lumot. Rasmiy ro'yxat hokimlikdan olinishi kerak._",
-        "ru": "🏘 *Выберите вашу махаллю:*\n\n"
-              "⚠️ _Этот список — ДЕМО-данные. Официальный список должен быть получен от хокимията._",
+        "uz": "🏘 *Mahallangizni tanlang:*",
+        "uz_cyrillic": "🏘 *Маҳаллангизни танланг:*",
+        "ru": "🏘 *Выберите вашу махаллю:*",
     },
     "enter_address_detail": {
-        "uz": "📍 *Aniq manzilingizni kiriting:*\n\n"
-              "Ko'cha, uy raqami va boshqa ma'lumotlar.",
-        "ru": "📍 *Введите ваш точный адрес:*\n\n"
-              "Улица, номер дома и другие данные.",
+        "uz": "📍 *Aniq manzilingizni kiriting:*\n\nKo‘cha, uy raqami va mo‘ljalni yozing. Bu maydon majburiy.",
+        "uz_cyrillic": "📍 *Аниқ манзилингизни киритинг:*\n\nКўча, уй рақами ва мўлжални ёзинг. Бу майдон мажбурий.",
+        "ru": "📍 *Введите точный адрес:*\n\nУкажите улицу, номер дома и ориентир. Это обязательное поле.",
+    },
+    "invalid_address_detail": {
+        "uz": "❌ To‘liq manzilni kamida 8 ta belgi bilan kiriting: ko‘cha nomi va uy raqami.",
+        "uz_cyrillic": "❌ Тўлиқ манзилни камида 8 та белги билан киритинг: кўча номи ва уй рақами.",
+        "ru": "❌ Укажите полный адрес (не менее 8 символов): название улицы и номер дома.",
     },
 
     # --- Category & Organization ---
     "select_category": {
-        "uz": "📁 *Murojaat sohasini tanlang:*\n\n"
-              "⚠️ _Kategoriyalar va mas'ul tashkilotlar DEMO sifatida kiritilgan. "
-              "Rasmiy ro'yxat hokimlikdan tasdiqlanishi kerak._",
-        "ru": "📁 *Выберите сферу обращения:*\n\n"
-              "⚠️ _Категории и ответственные организации указаны как ДЕМО. "
-              "Официальный список должен быть утверждён хокимиятом._",
+        "uz": "📁 *Murojaat sohasini tanlang:*",
+        "uz_cyrillic": "📁 *Мурожаат соҳасини танланг:*",
+        "ru": "📁 *Выберите тему обращения:*",
     },
 
     # --- Complaint Content ---
@@ -291,11 +305,12 @@ TEXTS: dict[str, dict[str, str]] = {
             "📅 Qabul sanasi: {date}\n"
             "📌 Turi: {type}\n"
             "📁 Soha: {category}\n\n"
-            "⚠️ _Bu elektron kvitansiya. Ushbu murojaat rasmiy ro'yxatdan "
-            "o'tganmi yoki dastlabki qabul so'rovi ekanining huquqiy maqomi "
-            "hokimlik tomonidan hali tasdiqlanmagan. Batafsil ma'lumot uchun "
-            "tegishli idoraga murojaat qiling._\n\n"
-            "Murojaatingiz holatini \"Murojaatlarim\" bo'limidan kuzatishingiz mumkin."
+            "Arizangiz tizimga qabul qilindi va hozir saralashni kutmoqda. "
+            "Mas'ul idora hali biriktirilmagan. Idora biriktirilganda uning "
+            "nomini bot orqali alohida yuboramiz.\n\n"
+            "Holatini \"Murojaatlarim\" bo'limidan tracking raqami bilan "
+            "kuzatishingiz mumkin. Bu xabar tizim arizangizni qabul qilganini "
+            "tasdiqlaydi; ko'rib chiqish muddati amaldagi tartib bo'yicha belgilanadi."
         ),
         "ru": (
             "✅ *Ваше обращение принято!*\n\n"
@@ -303,11 +318,12 @@ TEXTS: dict[str, dict[str, str]] = {
             "📅 Дата приёма: {date}\n"
             "📌 Тип: {type}\n"
             "📁 Сфера: {category}\n\n"
-            "⚠️ _Это электронная квитанция. Правовой статус данного обращения — "
-            "является ли оно официально зарегистрированным обращением или "
-            "предварительным запросом — ещё не утверждён хокимиятом. "
-            "Для подробностей обратитесь в соответствующий орган._\n\n"
-            "Вы можете отслеживать статус в разделе «Мои обращения»."
+            "Обращение принято системой и ожидает первичной сортировки. "
+            "Ответственный орган пока не назначен. После назначения мы "
+            "отправим вам название органа отдельным сообщением.\n\n"
+            "Отслеживайте обращение по номеру в разделе «Мои обращения». "
+            "Это сообщение подтверждает получение системой; срок рассмотрения "
+            "определяется действующим порядком."
         ),
     },
 
@@ -327,9 +343,9 @@ TEXTS: dict[str, dict[str, str]] = {
 
     # --- Status Labels ---
     "status_draft": {"uz": "Qoralama", "ru": "Черновик"},
-    "status_submitted": {"uz": "Yuborildi", "ru": "Отправлено"},
-    "status_triage": {"uz": "Ko'rib chiqilmoqda", "ru": "На рассмотрении"},
-    "status_routed": {"uz": "Yo'naltirildi", "ru": "Направлено"},
+    "status_submitted": {"uz": "Qabul qilindi · saralash kutilmoqda", "ru": "Принято · ожидает сортировки"},
+    "status_triage": {"uz": "Saralanmoqda", "ru": "Первичная сортировка"},
+    "status_routed": {"uz": "Mas'ul idoraga yo'naltirildi", "ru": "Направлено в ответственный орган"},
     "status_in_progress": {"uz": "Bajarilmoqda", "ru": "В работе"},
     "status_waiting_for_citizen": {"uz": "Fuqarodan javob kutilmoqda", "ru": "Ожидание ответа гражданина"},
     "status_response_provided": {"uz": "Javob berildi", "ru": "Ответ предоставлен"},
@@ -381,6 +397,26 @@ TEXTS: dict[str, dict[str, str]] = {
     "citizen_reopened": {
         "uz": "📋 Murojaatingiz qayta ko'rib chiqish uchun yuborildi. Tracking: `{tracking_id}`",
         "ru": "📋 Ваше обращение отправлено на повторное рассмотрение. Номер: `{tracking_id}`",
+    },
+    "additional_info_prompt": {
+        "uz": "📩 Iltimos, so‘ralgan qo‘shimcha ma’lumotni yozing yoki bitta rasm/hujjat yuboring. Faylga izohni caption’da yozishingiz mumkin.",
+        "ru": "📩 Отправьте запрошенные сведения текстом или одним фото/документом. Комментарий к файлу можно добавить в подписи.",
+    },
+    "additional_info_received": {
+        "uz": "✅ Qo‘shimcha ma’lumotingiz qabul qilindi va murojaatga biriktirildi.",
+        "ru": "✅ Дополнительные сведения получены и прикреплены к обращению.",
+    },
+    "additional_info_invalid": {
+        "uz": "Matn yoki ruxsat etilgan hajm va formatdagi bitta fayl yuboring.",
+        "ru": "Отправьте текст или один файл допустимого размера и формата.",
+    },
+    "additional_info_expired": {
+        "uz": "Bu murojaat uchun qo‘shimcha ma’lumot so‘rovi faol emas.",
+        "ru": "Запрос дополнительных сведений по этому обращению уже не активен.",
+    },
+    "additional_info_button": {
+        "uz": "📩 Ma’lumot yuborish",
+        "ru": "📩 Отправить сведения",
     },
 
     # --- Duplicate Warning ---

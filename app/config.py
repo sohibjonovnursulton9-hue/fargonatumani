@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # --- Telegram ---
     telegram_bot_token: str = Field(..., description="Telegram Bot API token")
-    telegram_webhook_url: str = Field(default="", description="Webhook URL (empty = polling mode)")
+    telegram_webhook_url: str = Field(default="", description="Reserved; the runtime uses polling")
     telegram_webhook_secret: str = Field(
         default="change-me", description="Secret for webhook verification"
     )
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     display_timezone: str = Field(default="Asia/Tashkent", description="Display timezone")
 
     # --- Rate Limiting ---
-    max_complaints_per_day: int = Field(default=3, description="Max complaints per user per 24h")
+    max_complaints_per_day: int = Field(default=10, description="Max complaints per user per 24h")
     max_login_attempts: int = Field(default=5, description="Max login attempts before lockout")
     login_lockout_seconds: int = Field(default=900, description="Lockout duration in seconds")
 
@@ -76,6 +76,14 @@ class Settings(BaseSettings):
         default=False,
         description="OFF by default. Needs legal confirmation before enabling. See LEGAL-OPEN-QUESTIONS.md",
     )
+    require_passport_data: bool = Field(
+        default=False,
+        description="OFF by default. Needs legal confirmation before enabling.",
+    )
+    seed_demo_data: bool = Field(
+        default=False,
+        description="Seed provisional demo catalogs only when explicitly enabled in development.",
+    )
 
     @property
     def is_development(self) -> bool:
@@ -93,6 +101,14 @@ class Settings(BaseSettings):
     def allowed_extensions_list(self) -> list[str]:
         return [ext.strip().lower() for ext in self.allowed_file_extensions.split(",")]
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        for prefix in ("postgres://", "postgresql://"):
+            if isinstance(value, str) and value.startswith(prefix):
+                return "postgresql+asyncpg://" + value[len(prefix):]
+        return value
+
     @field_validator("app_env")
     @classmethod
     def validate_app_env(cls, v: str) -> str:
@@ -101,6 +117,25 @@ class Settings(BaseSettings):
             msg = f"app_env must be one of {allowed}"
             raise ValueError(msg)
         return v
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.telegram_webhook_url:
+            raise ValueError("Webhook mode is not implemented; leave TELEGRAM_WEBHOOK_URL empty")
+        if self.app_env == "production":
+            invalid = (
+                len(self.telegram_bot_token) < 30
+                or self.telegram_bot_token.startswith("0000000000:")
+                or len(self.admin_secret_key) < 32
+                or self.admin_secret_key.startswith("change-me")
+                or not self.database_url.startswith(("postgresql+asyncpg://", "postgres://"))
+            )
+            if invalid:
+                raise ValueError(
+                    "Production requires a real Telegram token, a strong admin secret, "
+                    "and a PostgreSQL DATABASE_URL."
+                )
+        return self
 
     model_config = {
         "env_file": ".env",

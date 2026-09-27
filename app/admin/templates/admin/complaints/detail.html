@@ -1,170 +1,162 @@
 {% extends "admin/base.html" %}
-
-{% block title %}Complaint Detail - FTMT Admin{% endblock %}
-
+{% block title %}Murojaat {{ complaint.tracking_id }} — FTMT{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Complaint: {{ complaint.tracking_id }}</h1>
-    <div>
-        <span class="badge bg-primary fs-5">{{ complaint.status }}</span>
-    </div>
+<section class="page-heading">
+  <div><p class="eyebrow">MUROJAAT TAFSILOTI</p><h1>{{ complaint.tracking_id }}</h1>
+    <p class="page-subtitle">Kelgan vaqt: {{ complaint.created_at|tashkent_tz }} · Til: {{ complaint.complaint_language }}</p></div>
+  <span class="status-pill"><span class="status-dot"></span>{{ complaint.status|replace('_',' ')|title }}</span>
+</section>
+{% if complaint.deleted_at %}<div class="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-2" role="status">
+  <span>O‘chirilganlar bo‘limida · {{ complaint.deleted_at|tashkent_tz }} · murojaat va audit tarixi saqlanmoqda.</span>
+  {% if admin.role in ['super_admin','district_supervisor'] %}<form action="/admin/complaints/{{ complaint.id }}/restore-deleted" method="post" data-admin-feedback><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-success">Savatdan tiklash</button></form>{% endif %}
+</div>{% endif %}
+{% if complaint.archived_at and not complaint.deleted_at %}<div class="alert alert-warning" role="status">Arxivlangan: {{ complaint.archived_at|tashkent_tz }}
+{% if admin.role in ['super_admin','district_supervisor'] %}<form action="/admin/complaints/{{ complaint.id }}/restore" method="post" class="d-inline ms-2" data-admin-feedback><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-success">Tiklash</button></form>{% endif %}</div>{% endif %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    <section class="control-section">
+      <div class="section-heading"><p class="eyebrow">FUQARO MUROJAATI</p><h2>{{ complaint.title }}</h2></div>
+      <p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ complaint.complaint_text }}</p>
+      <hr><div class="control-grid">
+        <div><span class="field-label">F.I.Sh.</span><strong>{{ complaint.full_name }}</strong></div>
+        <div><span class="field-label">Aloqa raqami</span><strong>{{ complaint.phone_number }}</strong></div>
+        <div><span class="field-label">Hudud ID / manzil izohi</span><strong>{{ complaint.mfy_area_id or 'Ko‘rsatilmagan' }} · {{ complaint.address_detail or 'Ko‘rsatilmagan' }}</strong></div>
+        <div><span class="field-label">Yo‘nalish / murojaat tili</span><strong>{{ complaint.category_id }} · {{ complaint.complaint_language }}</strong></div>
+      </div>
+      <p class="muted-note mb-0">Shaxsiy aloqa ma’lumotlari ushbu murojaatga ruxsati bor xodimlarga ko‘rsatiladi.</p>
+    </section>
+
+    <section class="control-section">
+      <div class="section-heading section-heading-between"><div><p class="eyebrow">QO‘SHIMCHA ALOQA</p><h2>Fuqarodan ma’lumot so‘rash va javoblar</h2></div><span class="count-chip">{{ citizen_messages|length }}</span></div>
+      {% for item in citizen_messages %}<article class="setting-card mb-2">
+        <small>{% if item.message_type == 'request' %}Xodim so‘rovi · #{{ item.author_id }}{% else %}Fuqaro javobi{% endif %} · {{ item.created_at|tashkent_tz }}</small>
+        {% if item.body %}<p class="mb-2" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ item.body }}</p>{% endif %}
+        {% for file in citizen_attachments.get(item.id, []) %}<div class="d-flex justify-content-between align-items-center gap-3 py-1">
+          <span>{{ file.file_name or (file.file_type|title ~ ' #' ~ file.id) }}</span><a class="btn btn-sm btn-outline-primary" href="/admin/attachments/{{ file.id }}" target="_blank" rel="noopener">Xavfsiz ochish</a>
+        </div>{% endfor %}
+      </article>{% else %}<div class="empty-state">Qo‘shimcha ma’lumot almashilmagan.</div>{% endfor %}
+      {% if complaint.status == 'in_progress' and not complaint.archived_at and not complaint.deleted_at and admin.role != 'auditor' %}<form method="post" action="/admin/complaints/{{ complaint.id }}/request-info" class="mt-3" data-admin-feedback>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="field-label" for="citizen-info-request">Fuqaro yuborishi kerak bo‘lgan ma’lumot</label>
+        <textarea id="citizen-info-request" class="form-control mb-2" name="request_text" rows="3" maxlength="2000" required></textarea>
+        <button class="btn btn-outline-primary">So‘rov yuborish va javobni kutish</button>
+      </form>{% endif %}
+    </section>
+
+    <section class="control-section">
+      <div class="section-heading section-heading-between"><div><p class="eyebrow">FAYLLAR</p><h2>Ilovalar</h2></div><span class="count-chip">{{ attachments|length }}</span></div>
+      {% for file in attachments %}<div class="d-flex justify-content-between align-items-center gap-3 py-2 border-bottom">
+        <div class="min-w-0"><strong>{{ file.file_name or (file.file_type|title ~ ' #' ~ file.id) }}</strong>
+          <div class="muted-note">{{ file.mime_type or 'Fayl' }} · {{ ((file.file_size or 0) / 1024)|round|int }} KB</div></div>
+        <a class="btn btn-sm btn-outline-primary flex-shrink-0" href="/admin/attachments/{{ file.id }}" target="_blank" rel="noopener">Xavfsiz ochish</a>
+      </div>{% else %}<div class="empty-state">Fayl ilova qilinmagan.</div>{% endfor %}
+    </section>
+
+    <section class="control-section">
+      <div class="section-heading"><p class="eyebrow">FUQAROGA YUBORILGAN</p><h2>Rasmiy javoblar</h2></div>
+      {% for response in responses %}<article class="setting-card mb-2"><small>{{ response.created_at|tashkent_tz }} · {{ response.response_language }}</small>
+        <p style="white-space:pre-wrap">{{ response.response_text }}</p>{% if response.actions_taken %}<small>Ko‘rilgan chora: {{ response.actions_taken }}</small>{% endif %}</article>
+      {% else %}<div class="empty-state">Hali javob yuborilmagan.</div>{% endfor %}
+    </section>
+
+    <section class="control-section" id="internal-notes">
+      <div class="section-heading"><p class="eyebrow">ICHKI ISH</p><h2>Xodimlar izohlari</h2>
+        <p>Bu izohlar fuqaroga yuborilmaydi; murojaatga ruxsati bor xodimlargagina ko‘rinadi.</p></div>
+      {% for item in internal_notes %}<article class="setting-card mb-2">
+        <small>{{ item.author }} · {{ item.note.created_at|tashkent_tz }}</small>
+        <p class="mb-0" style="white-space:pre-wrap">{{ item.note.body }}</p></article>
+      {% else %}<div class="empty-state mb-3">Ichki izoh hali yo‘q.</div>{% endfor %}
+      {% if admin.role != 'auditor' and not complaint.archived_at and not complaint.deleted_at %}
+      <form method="post" action="/admin/complaints/{{ complaint.id }}/internal-notes" data-admin-feedback>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="internal-note" class="field-label">Yangi ichki izoh</label>
+        <textarea id="internal-note" class="form-control mb-2" name="body" rows="3" maxlength="5000" required></textarea>
+        <button class="btn btn-outline-primary">Ichki izohni saqlash</button>
+      </form>{% endif %}
+    </section>
+
+    <section class="control-section">
+      <div class="section-heading"><p class="eyebrow">AUDIT TARIXI</p><h2>Holat o‘zgarishlari</h2></div>
+      {% for event in events %}<div class="d-flex justify-content-between gap-3 py-2 border-bottom">
+        <div><strong>{{ event.to_status|replace('_',' ')|title }}</strong><div class="muted-note">{{ event.reason or 'Sabab kiritilmagan' }} · {{ event.actor_type }} {{ event.actor_id }}</div></div>
+        <small class="text-nowrap">{{ event.created_at|tashkent_tz }}</small></div>
+      {% else %}<div class="empty-state">Tarix yozuvi yo‘q.</div>{% endfor %}
+      <h3 class="h6 mt-4">Biriktirishlar tarixi</h3>
+      {% for assignment in assignments %}<div class="muted-note py-1">{{ organization_names.get(assignment.organization_id, 'Idora #' ~ assignment.organization_id) }}
+        · {{ assignment.assigned_at|tashkent_tz if assignment.assigned_at else '' }}
+        · {% if assignment.is_active %}faol{% else %}yakunlangan{% endif %}
+        {% if assignment.assigned_to_id %}· xodim #{{ assignee_names.get(assignment.assigned_to_id, '#' ~ assignment.assigned_to_id) }}{% endif %}</div>
+      {% else %}<p class="muted-note">Hali idora biriktirilmagan.</p>{% endfor %}
+    </section>
+  </div>
+
+  <aside class="col-lg-4">
+    <section class="control-section">
+      <div class="section-heading"><p class="eyebrow">MUDDAT</p><h2>Ko‘rib chiqish vaqti</h2></div>
+      {% if deadline %}<p class="mb-1"><strong>{{ deadline.current_deadline|tashkent_tz }}</strong></p>
+        {% if deadline_overdue %}<span class="badge text-bg-danger">Muddati o‘tgan</span>{% endif %}
+      {% else %}<p class="muted-note">Muddat belgilanmagan.</p>{% endif %}
+    </section>
+    {% if complaint.deleted_at is none and admin.role in ['super_admin','district_supervisor'] %}
+    <section class="control-section border-danger"><h2 class="h6">Murojaatni o‘chirish</h2><p class="muted-note">Murojaat va audit tarixi tiklanadigan o‘chirilganlar bo‘limiga ko‘chadi.</p>
+      <form action="/admin/complaints/{{ complaint.id }}/delete" method="post" data-admin-feedback onsubmit="return confirm('Murojaatni o‘chirilganlar bo‘limiga ko‘chirasizmi? Keyin uni tiklash mumkin.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger w-100">O‘chirilganlarga ko‘chirish</button></form>
+    </section>{% endif %}
+    {% if complaint.archived_at is none and complaint.deleted_at is none and admin.role in ['super_admin','district_supervisor'] %}
+    <section class="control-section border-warning"><h2 class="h6">Arxivlash</h2><p class="muted-note">Yozuv va audit tarixi saqlanadi, keyin tiklanadi.</p>
+      <form action="/admin/complaints/{{ complaint.id }}/archive" method="post" data-admin-feedback onsubmit="return confirm('Murojaat arxivga o‘tkazilsinmi?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger w-100">Arxivga olish</button></form>
+    </section>{% endif %}
+    {% if admin.role in ['super_admin','district_supervisor'] and complaint.status == 'submitted' and not complaint.archived_at and not complaint.deleted_at %}
+    <section class="control-section"><h2 class="h6">Saralash</h2><form action="/admin/complaints/{{ complaint.id }}/triage" method="post" data-admin-feedback><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-warning w-100">Saralashga yuborish</button></form></section>{% endif %}
+    {% if admin.role in ['super_admin','district_supervisor','agency_head'] and not terminal and not complaint.archived_at and not complaint.deleted_at %}
+    <section class="control-section"><div class="section-heading"><h2>Idora va ijrochi</h2></div>
+      <form action="/admin/complaints/{{ complaint.id }}/assign" method="post" data-admin-feedback><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field-label" for="organization-id">Mas’ul idora</label>
+        <select id="organization-id" name="organization_id" class="form-select mb-3" required>
+          {% for org in organizations %}<option value="{{ org.id }}">{{ org.name_uz }}</option>{% endfor %}
+        </select>
+        <label class="field-label" for="executor-id">Ijrochi (ixtiyoriy)</label>
+        <select id="executor-id" name="assigned_to_id" class="form-select mb-3"><option value="">Idora rahbari biriktiradi</option>
+          {% for employee in executors %}<option value="{{ employee.id }}" data-organization="{{ employee.organization_id }}">{{ employee.full_name or employee.username }}</option>{% endfor %}
+        </select>
+        <label class="field-label" for="assignment-note">Izoh</label><textarea id="assignment-note" name="notes" class="form-control mb-3" rows="2" maxlength="1000"></textarea>
+        <button class="btn btn-primary w-100" {% if not organizations %}disabled{% endif %}>Biriktirish</button>
+      </form>
+    </section>{% endif %}
+    {% if admin.role != 'auditor' and not complaint.archived_at and not complaint.deleted_at %}
+    {% if valid_transitions %}<section class="control-section"><h2 class="h6">Holatni yangilash</h2><form action="/admin/complaints/{{ complaint.id }}/status" method="post" data-admin-feedback>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="field-label" for="new-status">Yangi holat</label>
+      <select id="new-status" name="new_status" class="form-select mb-3" required>{% for status in valid_transitions %}<option value="{{ status }}">{{ status|replace('_',' ')|title }}</option>{% endfor %}</select>
+      <textarea name="reason" class="form-control mb-3" rows="2" maxlength="1000" placeholder="Ichki sabab yoki izoh"></textarea>
+      <button class="btn btn-outline-secondary w-100">Holatni saqlash</button></form></section>{% endif %}
+    <section class="control-section"><h2 class="h6">Fuqaroga javob</h2><form action="/admin/complaints/{{ complaint.id }}/respond" method="post" data-admin-feedback>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if response_templates %}<label class="field-label" for="response-template">Tasdiqlangan shablon</label>
+      <select id="response-template" class="form-select mb-3"><option value="">Shablon tanlang</option>
+        {% for item in response_templates %}<option value="{{ item.body_uz }}" data-ru="{{ item.body_ru }}" data-cyrillic="{{ item.body_uz_cyrillic }}">{{ item.label_uz }}</option>{% endfor %}
+      </select>{% endif %}
+      <label class="field-label" for="response-text">Javob matni</label><textarea id="response-text" name="response_text" class="form-control mb-3" rows="5" maxlength="8000" required></textarea>
+      <label class="field-label" for="response-language">Javob tili</label><select id="response-language" name="response_language" class="form-select mb-3">
+        <option value="uz">O‘zbek lotin</option><option value="uz_cyrillic">O‘zbek kirill</option><option value="ru">Русский</option></select>
+      <label class="field-label">Ko‘rilgan chora</label><textarea name="actions_taken" class="form-control mb-3" rows="2" maxlength="3000"></textarea>
+      <button class="btn btn-success w-100">Fuqaroga yuborish</button></form></section>
+    {% endif %}
+    {% if admin.role in ['super_admin','district_supervisor'] and not complaint.archived_at and not complaint.deleted_at %}
+    <section class="control-section"><h2 class="h6">Muddatni uzaytirish</h2><form action="/admin/complaints/{{ complaint.id }}/extend-deadline" method="post" data-admin-feedback>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="field-label">Kun</label><input type="number" name="days" class="form-control mb-3" min="1" max="365" value="5" required>
+      <label class="field-label">Sabab</label><textarea name="reason" class="form-control mb-3" rows="2" maxlength="1000" required></textarea><button class="btn btn-outline-danger w-100">Muddatni yangilash</button></form></section>{% endif %}
+  </aside>
 </div>
-
-<div class="row">
-    <div class="col-md-8">
-        <div class="card mb-4">
-            <div class="card-header">Details</div>
-            <div class="card-body">
-                <h5 class="card-title">{{ complaint.title }}</h5>
-                <p class="card-text">{{ complaint.complaint_text }}</p>
-                <hr>
-                <div class="row">
-                    <div class="col-md-6">
-                        <p><strong>Citizen:</strong> {{ complaint.full_name }}</p>
-                        <p><strong>Phone:</strong> {{ complaint.phone_number }}</p>
-                        <p><strong>MFY / Address:</strong> {{ complaint.mfy_area_id }} / {{ complaint.address_detail }}</p>
-                    </div>
-                    <div class="col-md-6">
-                        <p><strong>Type:</strong> {{ complaint.complaint_type }}</p>
-                        <p><strong>Language:</strong> {{ complaint.complaint_language }}</p>
-                        <p><strong>Created:</strong> {{ complaint.created_at | tashkent_tz }}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card mb-4">
-            <div class="card-header">Responses</div>
-            <div class="card-body">
-                {% for r in responses %}
-                <div class="mb-3 p-3 border rounded">
-                    <p><strong>Date:</strong> {{ r.created_at | tashkent_tz }}</p>
-                    <p><strong>Text:</strong> {{ r.response_text }}</p>
-                    {% if r.actions_taken %}<p><strong>Actions:</strong> {{ r.actions_taken }}</p>{% endif %}
-                </div>
-                {% else %}
-                <p>No responses yet.</p>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="card mb-4">
-            <div class="card-header">Status Timeline</div>
-            <div class="card-body">
-                <ul class="list-group">
-                    {% for e in events %}
-                    <li class="list-group-item">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">{{ e.to_status }}</h6>
-                            <small>{{ e.created_at | tashkent_tz }}</small>
-                        </div>
-                        <p class="mb-1">{{ e.reason or 'No reason provided' }}</p>
-                        <small>By: {{ e.actor_type }} ({{ e.actor_id }})</small>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        {% if admin.role in ['super_admin', 'district_supervisor'] and complaint.status == 'submitted' %}
-        <div class="card mb-4">
-            <div class="card-header">Actions</div>
-            <div class="card-body">
-                <form action="/admin/complaints/{{ complaint.id }}/triage" method="post">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="btn btn-warning w-100">Send to Triage</button>
-                </form>
-            </div>
-        </div>
-        {% endif %}
-
-        {% if admin.role in ['super_admin', 'district_supervisor', 'agency_head'] %}
-        <div class="card mb-4">
-            <div class="card-header">Assign Organization</div>
-            <div class="card-body">
-                <form action="/admin/complaints/{{ complaint.id }}/assign" method="post">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <div class="mb-3">
-                        <label>Organization</label>
-                        <select name="organization_id" class="form-select" required>
-                            {% for org in organizations %}
-                            <option value="{{ org.id }}">{{ org.name_uz }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label>Notes (Optional)</label>
-                        <textarea name="notes" class="form-control" rows="2"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Assign</button>
-                </form>
-            </div>
-        </div>
-        {% endif %}
-
-        {% if admin.role != 'auditor' %}
-        <div class="card mb-4">
-            <div class="card-header">Change Status</div>
-            <div class="card-body">
-                <form action="/admin/complaints/{{ complaint.id }}/status" method="post">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <div class="mb-3">
-                        <label>New Status</label>
-                        <select name="new_status" class="form-select" required>
-                            {% for st in valid_transitions %}
-                            <option value="{{ st }}">{{ st }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label>Reason</label>
-                        <textarea name="reason" class="form-control" rows="2"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-secondary w-100">Update Status</button>
-                </form>
-            </div>
-        </div>
-        
-        <div class="card mb-4">
-            <div class="card-header">Add Response</div>
-            <div class="card-body">
-                <form action="/admin/complaints/{{ complaint.id }}/respond" method="post">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <div class="mb-3">
-                        <label>Response Text</label>
-                        <textarea name="response_text" class="form-control" rows="3" required></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label>Actions Taken</label>
-                        <textarea name="actions_taken" class="form-control" rows="2"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">Submit Response</button>
-                </form>
-            </div>
-        </div>
-        {% endif %}
-        
-        {% if admin.role in ['super_admin', 'district_supervisor'] %}
-        <div class="card mb-4">
-            <div class="card-header">Extend Deadline</div>
-            <div class="card-body">
-                <form action="/admin/complaints/{{ complaint.id }}/extend-deadline" method="post">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <div class="mb-3">
-                        <label>Days</label>
-                        <input type="number" name="days" class="form-control" min="1" value="5" required>
-                    </div>
-                    <div class="mb-3">
-                        <label>Reason</label>
-                        <textarea name="reason" class="form-control" rows="2" required></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-danger w-100">Extend</button>
-                </form>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</div>
+<script>
+(() => {
+  const organization=document.getElementById('organization-id');
+  const executor=document.getElementById('executor-id');
+  if(organization&&executor){
+    const update=()=>{const wanted=organization.value; for(const option of executor.options){if(!option.value)continue;const show=option.dataset.organization===wanted;option.hidden=!show;if(!show&&option.selected)executor.value='';}};
+    organization.addEventListener('change',update);update();
+  }
+  const templates=document.getElementById('response-template');
+  const text=document.getElementById('response-text');
+  const language=document.getElementById('response-language');
+  if(templates&&text)templates.addEventListener('change',()=>{const option=templates.selectedOptions[0];if(!option||!option.value)return;const key=language.value==='ru'?'ru':language.value==='uz_cyrillic'?'cyrillic':null;text.value=key?option.dataset[key]||option.value:option.value;});
+})();
+</script>
 {% endblock %}

@@ -1,0 +1,62 @@
+{% extends "admin/base.html" %}
+
+{% block title %}MFY ro‘yxatini ko‘rib chiqish{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">HUDUDLAR / RO‘YXATNI TEKSHIRISH</p><h1>MFY ro‘yxatini ko‘rib chiqish</h1><p class="page-subtitle">Import tasdiqlanmaguncha bazaga hech narsa yozilmaydi.</p></div>
+  <a class="btn btn-outline-secondary" href="/admin/mfy">Hududlarga qaytish</a>
+</div>
+
+{% if success == "0" %}<div class="alert alert-info">Oxirgi MFY importi qaytarildi. Yangi yozuvlar o‘chirilmadi, nofaol holatga o‘tkazildi.</div>
+{% elif success %}<div class="alert alert-success">Ro‘yxat ko‘rib chiqilib, o‘zgarishlar audit bilan saqlandi. Kerak bo‘lsa, quyidagi tugma orqali oxirgi importni qaytarishingiz mumkin.</div>{% endif %}
+
+<section class="control-section">
+  <div class="section-heading"><h2>Manba va tasdiqlash holati</h2></div>
+  <div class="alert alert-warning mb-3"><strong>Bu hali Hokimlik tasdiqlagan rasmiy ro‘yxat emas.</strong> Manba — siz yuborgan 58 ta bir sahifali MFY hujjati. Hujjatlarda ijtimoiy xizmat xodimlari haqidagi boshqa ustunlar bor; bu oqim ulardan hech qanday ma’lumot olmaydi.</div>
+  <p class="muted-note mb-0">O‘zbekcha nomlar foydalanuvchi yuborgan hujjatlardan ko‘chirildi. Kirillcha va ruscha ko‘rinishlar avtomatik transliteratsiya qilingan; ruscha rasmiy shakllarni Hokimlik bilan tekshiring. Yangi yozuvlar “tekshirilmagan” holatda qoladi. Manba: <code>{{ source }}</code>.</p>
+</section>
+
+{% if duplicates %}<div class="alert alert-danger"><strong>Import to‘xtatildi:</strong> bazada bir xil MFY nomining takroriy yozuvlari bor. Avval “Hududlar” sahifasida ularni tekshiring. Takroriy guruhlar: {{ duplicates|length }}.</div>{% endif %}
+
+<section class="control-section">
+  <div class="section-heading section-heading-between"><div><h2>58 ta nom bo‘yicha oldindan ko‘rish</h2><p>Rasmiy deb belgilangan mavjud yozuvlar saqlanadi; ular avtomatik almashtirilmaydi.</p></div><span class="count-chip">{{ plan|length }} MFY</span></div>
+  <div class="table-responsive"><table class="table">
+    <thead><tr><th>#</th><th>Hujjatdagi nom</th><th>Kirillcha ko‘rinish</th><th>Paneldagi holat</th><th>Amal</th></tr></thead>
+    <tbody>{% for row in plan %}<tr>
+      <td>{{ row.order }}</td><td>{{ row.entry.name_uz }}</td><td>{{ row.entry.name_uz_cyrillic }}</td>
+      <td>{% if row.current %}{{ row.current }}{% else %}<span class="muted-note">Hozircha yo‘q</span>{% endif %}</td>
+      <td>{% if row.action == "new" %}<span class="badge text-bg-primary">Yangi · tasdiq kutilmoqda</span>
+      {% elif row.action == "update" %}<span class="badge text-bg-warning">Vaqtinchalik yozuv yangilanadi</span>
+      {% elif row.action == "reactivate" %}<span class="badge text-bg-warning">Vaqtinchalik yozuv qayta faollashadi</span>
+      {% elif row.action == "official" %}<span class="badge text-bg-success">Rasmiy yozuv saqlanadi</span>
+      {% elif row.action == "official_inactive" %}<span class="badge text-bg-secondary">Nofaol rasmiy yozuv saqlanadi</span>
+      {% elif row.action == "duplicate" %}<span class="badge text-bg-danger">Takroriy yozuv · tuzatish kerak</span>
+      {% else %}<span class="badge text-bg-light">O‘zgarish yo‘q</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+{% if retireable %}<section class="control-section">
+  <div class="section-heading"><h2>Ro‘yxatga kiritilmagan vaqtinchalik hududlar</h2><p>Quyidagi {{ retireable|length }} ta faol, tekshirilmagan yozuv standart holatda o‘zgarishsiz qoladi.</p></div>
+  <div class="d-flex flex-wrap gap-2">{% for area in retireable %}<span class="badge text-bg-light">{{ area.name_uz }}</span>{% endfor %}</div>
+  <p class="muted-note mt-3 mb-0">Agar ularni fuqarolarga ko‘rsatmaslik kerakligiga ishonchingiz komil bo‘lsa, tasdiqlash formasida alohida tanlang. Ular o‘chirilmaydi, faqat nofaol qilinadi.</p>
+</section>{% endif %}
+
+<section class="control-section">
+  <div class="section-heading"><h2>Ko‘rib chiqish va saqlash</h2><p>Kim tasdiqlagani, qachon saqlagani va oldingi qiymatlar audit jurnaliga yoziladi.</p></div>
+  <form method="post" action="/admin/mfy/import" class="d-grid gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if retireable %}<label class="form-check d-flex align-items-start gap-2"><input class="form-check-input mt-1" type="checkbox" name="deactivate_missing" value="yes"><span>Ro‘yxatda yo‘q eski, tekshirilmagan hududlarni nofaol qilish</span></label>{% endif %}
+    <label class="form-check d-flex align-items-start gap-2"><input class="form-check-input mt-1" type="checkbox" name="confirm_import" value="yes" required><span>Manbani ko‘rib chiqdim. Yangi yozuvlar Hokimlik tasdiqlaguncha tekshirilmagan bo‘lib qolishini tushundim.</span></label>
+    <div><button class="btn btn-primary" type="submit" {% if duplicates %}disabled{% endif %}>Tasdiqlangan o‘zgarishlarni saqlash</button></div>
+  </form>
+</section>
+
+{% if undo_event_id %}<section class="control-section">
+  <div class="section-heading"><h2>Oxirgi importni qaytarish</h2><p>Faqat oxirgi importdan keyin tegilmagan yozuvlar qaytariladi. Keyin o‘zgartirilgan yozuv bo‘lsa, xavfsizlik uchun qaytarish bekor qilinadi.</p></div>
+  <form method="post" action="/admin/mfy/import/undo" onsubmit="return confirm('Oxirgi MFY importidagi o‘zgarishlarni qaytarasizmi?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="event_id" value="{{ undo_event_id }}">
+    <button class="btn btn-outline-danger" type="submit">Oxirgi importni qaytarish</button>
+  </form>
+</section>{% endif %}
+{% endblock %}

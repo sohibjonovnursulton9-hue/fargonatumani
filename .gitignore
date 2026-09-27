@@ -56,3 +56,9 @@ uploads/
 
 # Alembic
 alembic/versions/__pycache__/
+
+# Local source documents and extracted personal data
+tmp/
+
+.env.*
+!.env.example

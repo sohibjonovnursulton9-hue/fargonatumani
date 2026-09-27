@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Idoralar{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Mas’ul idoralar</h1>
+<p class="text-muted">Bot murojaatlarini yo‘naltiradigan tashkilotlarni uch tilda kiriting. Ishlatilmaydigan idorani o‘chirmang, faolsizlantiring.</p>
+
+<div class="card mb-4"><div class="card-header">Yangi idora</div><div class="card-body">
+<form method="post" action="/admin/organizations" class="row g-2" data-admin-feedback>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="col-md-2"><input class="form-control" name="code" placeholder="Kod: health_dept" required maxlength="50"></div>
+    <div class="col-md-3"><input class="form-control" name="name_uz" placeholder="O‘zbekcha (lotin)" required maxlength="255"></div>
+    <div class="col-md-3"><input class="form-control" name="name_uz_cyrillic" placeholder="Ўзбекча (кирилл)" required maxlength="255"></div>
+    <div class="col-md-3"><input class="form-control" name="name_ru" placeholder="Русский" required maxlength="255"></div>
+    <div class="col-md-6"><input class="form-control" name="contact_info" placeholder="Aloqa ma’lumoti (ixtiyoriy)"></div>
+    <div class="col-12"><button class="btn btn-primary">Idora qo‘shish</button></div>
+</form></div></div>
+
+<h2 class="h5">Mavjud idoralar</h2>
+{% for org in organizations %}
+<div class="card mb-3"><div class="card-body">
+    <form method="post" action="/admin/organizations/{{ org.id }}" class="row g-2 align-items-end" data-admin-feedback>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="col-md-2"><label class="form-label">Kod</label><input class="form-control" name="code" value="{{ org.code }}" required></div>
+        <div class="col-md-3"><label class="form-label">Lotin</label><input class="form-control" name="name_uz" value="{{ org.name_uz }}" required></div>
+        <div class="col-md-3"><label class="form-label">Кирилл</label><input class="form-control" name="name_uz_cyrillic" value="{{ org.name_uz_cyrillic }}" required></div>
+        <div class="col-md-3"><label class="form-label">Русский</label><input class="form-control" name="name_ru" value="{{ org.name_ru }}" required></div>
+        <div class="col-md-6"><label class="form-label">Aloqa ma’lumoti</label><input class="form-control" name="contact_info" value="{{ org.contact_info or '' }}"></div>
+        <div class="col-md-4"><label class="form-label">Ma’lumot holati</label><select class="form-select" name="is_provisional"><option value="true" {% if org.is_provisional %}selected{% endif %}>Hokimlik tasdig‘i kutilmoqda</option><option value="false" {% if not org.is_provisional %}selected{% endif %}>Rasmiy manba tasdiqlangan</option></select></div>
+        <div class="col-12 d-flex gap-2 align-items-center"><button class="btn btn-sm btn-primary">Saqlash</button><span class="badge {% if org.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{% if org.is_active %}Faol{% else %}Nofaol{% endif %}</span>{% if org.is_provisional %}<span class="badge text-bg-warning">Tasdiq kutilmoqda</span>{% endif %}</div>
+    </form>
+    <form method="post" action="/admin/organizations/{{ org.id }}/status" class="mt-2" data-admin-feedback>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="is_active" value="{% if org.is_active %}false{% else %}true{% endif %}">
+        <button class="btn btn-sm btn-outline-secondary">{% if org.is_active %}Faolsizlantirish{% else %}Faollashtirish{% endif %}</button>
+    </form>
+</div></div>
+{% else %}<p class="text-muted">Hali idora kiritilmagan.</p>{% endfor %}
+{% endblock %}

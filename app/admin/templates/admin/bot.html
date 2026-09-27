@@ -1,0 +1,262 @@
+{% extends "admin/base.html" %}
+{% block title %}Bot boshqaruvi — FTMT{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">TIZIM SOZLAMALARI</p><h1>Bot boshqaruvi</h1>
+    <p class="page-subtitle">O‘zgarishlar qoralama sifatida saqlanadi. Preview va tasdiqdan keyingina botga qo‘llanadi.</p></div>
+  <span class="status-pill {% if active_config.maintenance_enabled %}status-paused{% else %}status-live{% endif %}">
+    <span class="status-dot"></span>{% if active_config.maintenance_enabled %}Qabul vaqtincha to‘xtatilgan{% else %}Bot faol{% endif %}
+  </span>
+</section>
+
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if request.query_params.get('outcome') == 'draft' %}
+<div class="alert alert-info" role="status">Qoralama saqlandi. Botga qo‘llash uchun <a href="#publish-workflow">qoralamani ko‘rib chiqing va tasdiqlab e’lon qiling</a>.</div>
+{% elif request.query_params.get('outcome') == 'published' %}
+<div class="alert alert-success" role="status">Sozlamalar e’lon qilindi. Ishlayotgan bot yangi versiyani avtomatik yuklaydi.</div>
+{% endif %}
+
+<section class="control-section" id="publish-workflow">
+  <div class="section-heading section-heading-between">
+    <div><p class="eyebrow">NASHR JARAYONI</p><h2>Faol versiya va qoralama</h2>
+      <p>Bot faqat faol versiyani ishlatadi. Qoralama fuqarolarga ko‘rinmaydi.</p></div>
+    <span class="count-chip">Faol versiya: {% if active_revision_id %}#{{ active_revision_id }}{% else %}boshlang‘ich{% endif %}</span>
+  </div>
+  <div class="control-grid">
+    <div class="setting-card"><strong>Hozirgi holat</strong><small>
+      {% if active_config.maintenance_enabled %}Texnik tanaffus yoqilgan{% else %}Murojaat qabul qilish yoqilgan{% endif %}
+    </small></div>
+    <div class="setting-card"><strong>Qoralama</strong><small>
+      {% if draft %}#{{ draft.id }} · {{ draft.created_at|tashkent_tz }} · {{ draft.note or 'Izoh berilmagan' }}
+      {% else %}Hozircha yangi qoralama yo‘q; o‘zgarishni saqlashda yaratiladi.{% endif %}
+    </small></div>
+  </div>
+  {% if draft %}
+  <div class="form-actions">
+    <form method="post" action="/admin/bot/revisions/{{ draft.id }}/preview">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-outline-primary">Qoralamani ko‘rib chiqish</button>
+    </form>
+    {% if draft.previewed_at %}
+    <form method="post" action="/admin/bot/revisions/{{ draft.id }}/publish"
+          onsubmit="return confirm('Ko‘rib chiqilgan bot sozlamalarini hozir e’lon qilasizmi?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="confirm_publish" value="yes">
+      <button class="btn btn-primary">Tasdiqlab e’lon qilish</button>
+    </form>
+    {% else %}<span class="muted-note">E’lon qilishdan oldin preview qiling.</span>{% endif %}
+  </div>
+  {% if draft.previewed_at %}<p class="muted-note mt-3">Ko‘rib chiqilgan: {{ draft.previewed_at|tashkent_tz }} · admin ID {{ draft.previewed_by_id }}</p>{% endif %}
+  {% endif %}
+</section>
+
+{% if preview_config %}
+<section class="control-section" aria-labelledby="preview-heading">
+  <div class="section-heading"><p class="eyebrow">PREVIEW</p><h2 id="preview-heading">Fuqaroga ko‘rinadigan namunaviy matnlar</h2>
+    <p>Har bir tildagi xabarlarni tekshirib, keyin alohida tasdiqlab e’lon qiling.</p></div>
+  <div class="control-grid language-grid">
+    {% for locale, label in [('uz','O‘zbek lotin'),('uz_cyrillic','Ўзбек кирилл'),('ru','Русский')] %}
+    <article class="setting-card" lang="{{ 'ru' if locale == 'ru' else 'uz' }}">
+      <strong>{{ label }}</strong>
+      <small><b>Boshlanish:</b><br>{{ preview_config['welcome_message_' ~ locale] or 'Standart salomlashuv ishlatiladi.' }}</small>
+      <small><b>Yordam:</b><br>{{ preview_config['help_message_' ~ locale] or 'Standart yordam matni ishlatiladi.' }}</small>
+      {% if preview_config.announcement_enabled %}<small><b>E’lon:</b><br>{{ preview_config['announcement_' ~ locale] }}</small>{% endif %}
+      <small><b>Qabul vaqti:</b><br>{{ preview_config['working_hours_' ~ locale] or 'Kiritilmagan' }}</small>
+      <small><b>Aloqa:</b><br>{{ preview_config['contact_info_' ~ locale] or 'Kiritilmagan' }}</small>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<form method="post" action="/admin/bot">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <section class="control-section">
+    <div class="section-heading"><p class="eyebrow">ISH REJIMI</p><h2>Qabul, e’lon va limitlar</h2>
+      <p>Tanaffus faqat yangi ariza oqimini pauza qiladi; mavjud murojaat holatini o‘zgartirmaydi.</p></div>
+    <div class="control-grid">
+      <label class="setting-card setting-toggle"><span><strong>Texnik tanaffus</strong><small>Yangi murojaat yuborishni vaqtincha to‘xtatadi.</small></span>
+        <input class="form-check-input" type="checkbox" name="maintenance_enabled" value="true" {% if config.maintenance_enabled %}checked{% endif %}></label>
+      <label class="setting-card setting-toggle"><span><strong>Fuqarolar uchun e’lon</strong><small>Boshlanish/yordam xabarida e’lonni ko‘rsatadi.</small></span>
+        <input class="form-check-input" type="checkbox" name="announcement_enabled" value="true" {% if config.announcement_enabled %}checked{% endif %}></label>
+      <label class="setting-card"><span class="field-label">Kunlik limit</span>
+        <input class="form-control" type="number" name="daily_limit" min="1" max="20" value="{{ config.daily_limit }}" required>
+        <small>Fuqaro boshiga, oxirgi 24 soatda.</small></label>
+      <label class="setting-card"><span class="field-label">Muddatdan necha kun oldin eslatish</span>
+        <input class="form-control" type="number" name="reminder_days_before" min="1" max="30" value="{{ config.deadline_policy.reminder_days_before }}" required></label>
+      <label class="setting-card"><span class="field-label">Kechikishdan keyin eskalatsiya (kun)</span>
+        <input class="form-control" type="number" name="escalate_after_days" min="1" max="365" value="{{ config.deadline_policy.escalate_after_days }}" required></label>
+      <label class="setting-card"><span class="field-label">Ariza muddati (kun)</span>
+        <input class="form-control" type="number" name="ariza_days" min="1" max="365" value="{{ config.deadline_policy.ariza_days }}" required></label>
+      <label class="setting-card"><span class="field-label">Shikoyat muddati (kun)</span>
+        <input class="form-control" type="number" name="shikoyat_days" min="1" max="365" value="{{ config.deadline_policy.shikoyat_days }}" required></label>
+      <label class="setting-card"><span class="field-label">Taklif muddati (kun)</span>
+        <input class="form-control" type="number" name="taklif_days" min="1" max="365" value="{{ config.deadline_policy.taklif_days }}" required></label>
+      <label class="setting-card"><span class="field-label">Fuqaro tasdiqlash eslatmasi (soat)</span>
+        <input class="form-control" type="number" name="confirmation_reminder_hours" min="1" max="336" value="{{ config.deadline_policy.confirmation_reminder_hours }}" required></label>
+      <p class="muted-note">Murojaat muddatlari hozircha namunaviy. E’lon qilishdan oldin huquqiy va hokimlik tasdig‘ini oling.</p>
+    </div>
+    <div class="feature-list">
+      <label class="feature-item"><input class="form-check-input" type="checkbox" name="submissions_enabled" value="true" {% if config.features.submissions %}checked{% endif %}>
+        <span><strong>Yangi murojaat</strong><small>Bot menyusidagi yuborish oqimi</small></span></label>
+      <label class="feature-item"><input class="form-check-input" type="checkbox" name="my_complaints_enabled" value="true" {% if config.features.my_complaints %}checked{% endif %}>
+        <span><strong>Mening murojaatlarim</strong><small>Fuqaro o‘z ishini kuzatadi</small></span></label>
+      <label class="feature-item"><input class="form-check-input" type="checkbox" name="help_enabled" value="true" {% if config.features.help %}checked{% endif %}>
+        <span><strong>Yordam bo‘limi</strong><small>Yo‘riqnoma va aloqa</small></span></label>
+    </div>
+  </section>
+
+  {% set locale_labels = {'uz':'O‘zbek lotin','uz_cyrillic':'Ўзбек кирилл','ru':'Русский'} %}
+  {% for prefix, title in [('maintenance_message','Texnik tanaffus xabari'),('welcome_message','Boshlang‘ich xabar'),('help_message','Yordam matni'),('announcement','E’lon'),('working_hours','Qabul vaqti'),('contact_info','Aloqa ma’lumoti'),('deadline_reminder_message','Muddat eslatmasi'),('confirmation_reminder_message','Fuqaro tasdiqlash eslatmasi'),('escalation_message','Eskalatsiya xabari')] %}
+  <section class="control-section">
+    <div class="section-heading"><p class="eyebrow">FUQARO BILAN MULOQOT</p><h2>{{ title }}</h2></div>
+    <div class="control-grid language-grid">
+      {% for locale in ['uz','uz_cyrillic','ru'] %}
+      <label class="setting-card"><span class="field-label">{{ locale_labels[locale] }}</span>
+        <textarea class="form-control" name="{{ prefix }}_{{ locale }}" rows="3" maxlength="4000">{{ config[prefix ~ '_' ~ locale] }}</textarea></label>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <section class="control-section">
+    <div class="section-heading"><p class="eyebrow">MUROJAAT SHAKLI</p><h2>Maydonlar va yo‘riqnomalar</h2>
+      <p>F.I.Sh., telefon, mahalla, aniq manzil, sarlavha va murojaat matni majburiy. Pasport va tug‘ilgan sana yuridik asos tasdiqlanmaguncha yig‘ilmaydi.</p></div>
+    <div class="feature-list">
+      {% for key, title in [('mfy','Mahalla / hudud'),('address','Manzil izohi'),('attachments','Ilovalar')] %}
+      <div class="feature-item setting-toggle">
+        {% if key in ['mfy', 'address'] %}
+        <div><strong>{{ title }}</strong><small>Majburiy maydon · o‘chirib bo‘lmaydi</small></div>
+        <span class="badge text-bg-primary">Majburiy</span>
+        {% else %}
+        <label class="d-flex align-items-start gap-2">
+          <input class="form-check-input" type="checkbox" name="{{ key }}_enabled" value="true" {% if config.form_fields[key].enabled %}checked{% endif %}>
+          <span><strong>{{ title }}</strong><small>Maydonni fuqaroga ko‘rsatish</small></span>
+        </label>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="control-grid language-grid mt-3">
+      {% for key, title in [('full_name','F.I.Sh.'),('phone','Telefon'),('mfy','Hudud'),('address','Manzil'),('title','Sarlavha'),('description','Murojaat matni'),('attachments','Ilovalar')] %}
+      {% for locale in ['uz','uz_cyrillic','ru'] %}
+      <label><span class="field-label">{{ title }} · {{ locale_labels[locale] }}</span>
+        <input class="form-control" name="hint_{{ key }}_{{ locale }}" value="{{ config.field_hints[key][locale] }}" maxlength="500"></label>
+      {% endfor %}{% endfor %}
+    </div>
+    <div class="alert alert-info mt-3 mb-0">Pasport va tug‘ilgan sana yig‘ish o‘chirilgan. Yoqish uchun hokimlik/yuristning tasdiqlangan qonuniy asosi kerak.</div>
+  </section>
+
+  <section class="control-section">
+    <div class="section-heading"><p class="eyebrow">QORALAMA IZОHI</p><h2>O‘zgarish sababi</h2>
+      <p>Versiyalar ro‘yxati va audit jurnalida ko‘rinadi.</p></div>
+    <label class="setting-card"><span class="field-label">Izoh</span>
+      <input class="form-control" name="revision_note" maxlength="500" placeholder="Masalan: qabul vaqti tasdiqlandi"></label>
+    <div class="form-actions"><span class="muted-note">Sozlamalar hozircha faqat qoralama bo‘lib saqlanadi.</span>
+      <button class="btn btn-primary btn-lg">Qoralamani saqlash</button></div>
+  </section>
+</form>
+
+<section class="control-section">
+  <div class="section-heading"><p class="eyebrow">TUGMALAR VA BOT MATNLARI</p><h2>Interfeys tarjimalari</h2>
+    <p>O‘zbek lotin, o‘zbek kirill va ruscha matnlarni qoralamaga qo‘shing. {tracking_id}, {deadline}, {max} kabi o‘zgaruvchilarni aynan saqlang.</p></div>
+  {% for key, translations in config.translation_overrides.items() %}
+  <article class="quick-answer-card"><div class="quick-answer-copy"><strong>{{ key }}</strong>
+    <p>{{ translations.uz }}</p><p>{{ translations.uz_cyrillic }}</p><p lang="ru">{{ translations.ru }}</p></div>
+    <div class="quick-answer-actions">
+      <details><summary class="btn btn-sm btn-outline-primary">Tahrirlash</summary>
+        <form class="quick-answer-form" method="post" action="/admin/bot/text-overrides">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="text_key" value="{{ key }}">
+          {% for locale, label in [('uz','O‘zbek lotin'),('uz_cyrillic','O‘zbek kirill'),('ru','Русский')] %}
+          <label class="field-label mt-2">{{ label }}<textarea class="form-control" name="text_{{ locale }}" rows="3" maxlength="3500" required>{{ translations[locale] }}</textarea></label>
+          {% endfor %}
+          <button class="btn btn-primary mt-2">Tarjimani yangilash</button>
+        </form>
+      </details>
+      <form method="post" action="/admin/bot/text-overrides/{{ key }}/delete" onsubmit="return confirm('Ushbu matn standart tarjimaga qaytarilsinmi?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger">Standartga qaytarish</button></form>
+    </div>
+  </article>
+  {% else %}<div class="empty-state mb-3">Standart bot matnlari o‘z holida. Tahrir qo‘shilmagan.</div>{% endfor %}
+  <form class="quick-answer-form" method="post" action="/admin/bot/text-overrides">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="field-label" for="text-key">Tahrirlanadigan matn</label>
+    <select id="text-key" name="text_key" class="form-select mb-3" required>
+      {% for key, label in translation_keys %}{% if key not in config.translation_overrides %}<option value="{{ key }}">{{ label }} · {{ key }}</option>{% endif %}{% endfor %}
+    </select>
+    <div class="control-grid language-grid">
+      {% for locale, label in [('uz','O‘zbek lotin'),('uz_cyrillic','O‘zbek kirill'),('ru','Русский')] %}
+      <label><span class="field-label">{{ label }}</span><textarea class="form-control" name="text_{{ locale }}" rows="3" maxlength="3500" required></textarea></label>
+      {% endfor %}
+    </div>
+    <button class="btn btn-outline-primary">Tarjimani qoralamaga qo‘shish</button>
+  </form>
+  <p class="muted-note mt-3">Rozilik matnlari huquqiy tasdiq talab qilgani uchun bu ro‘yxatda tahrirlanmaydi. Nashr uchun preview va alohida tasdiq zarur.</p>
+</section>
+
+<section class="control-section">
+  <div class="section-heading section-heading-between"><div><p class="eyebrow">TEZKOR TUGMALAR</p><h2>Botdagi tayyor javoblar</h2>
+    <p>Uch tilda saqlanadi va faqat nashrdan keyin botda ko‘rinadi.</p></div>
+    <span class="count-chip">{{ config.quick_answers|length }} / 12</span></div>
+  {% for item in config.quick_answers %}
+  <article class="quick-answer-card"><div class="quick-answer-copy"><div class="quick-answer-title"><strong>{{ item.label_uz }}</strong>
+    <span>{{ item.label_uz_cyrillic }}</span><span lang="ru">{{ item.label_ru }}</span>
+    {% if not item.enabled %}<span class="badge text-bg-secondary">Yashirin</span>{% endif %}</div>
+    <p>{{ item.response_uz }}</p><p>{{ item.response_uz_cyrillic }}</p><p lang="ru">{{ item.response_ru }}</p></div>
+    <div class="quick-answer-actions">
+      <form method="post" action="/admin/bot/quick-answers/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn-outline-secondary">{% if item.enabled %}Yashirish{% else %}Ko‘rsatish{% endif %}</button></form>
+      <form method="post" action="/admin/bot/quick-answers/{{ item.id }}/delete" onsubmit="return confirm('Qoralamadan olib tashlansinmi?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger">Olib tashlash</button></form>
+    </div></article>
+  {% else %}<div class="empty-state"><strong>Tezkor javob yo‘q</strong><p>Tugma qo‘shsangiz qoralamaga tushadi.</p></div>{% endfor %}
+  {% if config.quick_answers|length < 12 %}
+  <form class="quick-answer-form" method="post" action="/admin/bot/quick-answers">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="section-heading"><h3>Tezkor javob qo‘shish</h3></div>
+    <div class="control-grid language-grid">
+      {% for locale in ['uz','uz_cyrillic','ru'] %}
+      <label><span class="field-label">Tugma · {{ locale_labels[locale] }}</span><input class="form-control" name="label_{{ locale }}" maxlength="32" required></label>
+      <label><span class="field-label">Javob · {{ locale_labels[locale] }}</span><textarea class="form-control" name="response_{{ locale }}" rows="3" maxlength="3500" required></textarea></label>
+      {% endfor %}
+    </div><button class="btn btn-outline-primary">Qoralamaga qo‘shish</button>
+  </form>{% endif %}
+</section>
+
+<section class="control-section">
+  <div class="section-heading"><p class="eyebrow">XODIM UCHUN JAVOBLAR</p><h2>Javob shablonlari</h2>
+    <p>Murojaat tafsilotida javob maydoniga tanlab qo‘yish mumkin.</p></div>
+  {% for item in config.response_templates %}
+  <article class="quick-answer-card"><div class="quick-answer-copy"><strong>{{ item.label_uz }} · {{ item.label_uz_cyrillic }} · {{ item.label_ru }}</strong>
+    <p>{{ item.body_uz }}</p><p>{{ item.body_uz_cyrillic }}</p><p lang="ru">{{ item.body_ru }}</p></div>
+    <form method="post" action="/admin/bot/response-templates/{{ item.id }}/delete" onsubmit="return confirm('Shablon qoralamadan olib tashlansinmi?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-outline-danger">Olib tashlash</button></form></article>
+  {% else %}<div class="empty-state"><strong>Javob shablonlari yo‘q</strong><p>Qo‘shilgan shablonlar faqat xodim panelida ishlatiladi.</p></div>{% endfor %}
+  <form class="quick-answer-form" method="post" action="/admin/bot/response-templates">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="section-heading"><h3>Javob shabloni qo‘shish</h3></div>
+    <div class="control-grid language-grid">
+      {% for locale in ['uz','uz_cyrillic','ru'] %}
+      <label><span class="field-label">Nomi · {{ locale_labels[locale] }}</span><input class="form-control" name="label_{{ locale }}" maxlength="80" required></label>
+      <label><span class="field-label">Matn · {{ locale_labels[locale] }}</span><textarea class="form-control" name="body_{{ locale }}" rows="3" maxlength="4000" required></textarea></label>
+      {% endfor %}
+    </div><button class="btn btn-outline-primary">Qoralamaga qo‘shish</button>
+  </form>
+</section>
+
+<section class="control-section">
+  <div class="section-heading"><p class="eyebrow">VERSIYALAR VA QAYTARISH</p><h2>O‘zgarishlar tarixi</h2></div>
+  <div class="table-responsive"><table class="table mb-0"><thead><tr><th>Versiya</th><th>Holat</th><th>Kim / qachon</th><th>Izoh</th><th>Amal</th></tr></thead><tbody>
+  {% for revision in revisions %}
+    <tr><td>#{{ revision.id }}</td><td>{{ revision.state|title }}{% if revision.id == active_revision_id %} · faol{% endif %}</td>
+      <td>Qoralama: {{ revision.created_by_id }} · {{ revision.created_at|tashkent_tz }}{% if revision.published_at %}<br>Nashr: {{ revision.published_by_id }} · {{ revision.published_at|tashkent_tz }}{% endif %}</td><td>{{ revision.note or '—' }}</td><td>
+      {% if revision.state == 'published' and revision.id != active_revision_id %}
+      <form method="post" action="/admin/bot/revisions/{{ revision.id }}/rollback" onsubmit="return confirm('Bot sozlamasini ushbu versiyaga qaytarasizmi?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="confirm_rollback" value="yes">
+        <button class="btn btn-sm btn-outline-warning">Qaytarish</button></form>
+      {% elif revision.previewed_at %}<span class="muted-note">Ko‘rib chiqilgan · {{ revision.previewed_at|tashkent_tz }}</span>{% endif %}
+    </td></tr>
+  {% else %}<tr><td colspan="5"><div class="empty-state">Hali nashr versiyasi yo‘q.</div></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

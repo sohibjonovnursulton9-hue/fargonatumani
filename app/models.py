@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -150,6 +151,8 @@ class AuditAction(str, enum.Enum):
     CITIZEN_CONFIRMED = "citizen_confirmed"
     CITIZEN_REJECTED = "citizen_rejected"
     DEADLINE_EXTENDED = "deadline_extended"
+    COMPLAINT_ARCHIVED = "complaint_archived"
+    COMPLAINT_RESTORED = "complaint_restored"
     # Admin actions
     ADMIN_LOGIN = "admin_login"
     ADMIN_LOGIN_FAILED = "admin_login_failed"
@@ -159,6 +162,7 @@ class AuditAction(str, enum.Enum):
     ADMIN_DEACTIVATED = "admin_deactivated"
     ROLE_CHANGED = "role_changed"
     CONFIG_CHANGED = "config_changed"
+    NOTIFICATION_RETRIED = "notification_retried"
     DATA_EXPORTED = "data_exported"
     BULK_ACTION = "bulk_action"
 
@@ -170,11 +174,11 @@ class AuditAction(str, enum.Enum):
 def generate_tracking_id() -> str:
     """
     Generate unique citizen-facing tracking ID.
-    Format: FTMT-YYYYMMDD-XXXX (e.g., FTMT-20260926-A3F7)
+    Format: FTMT-YYYYMMDD-XXXXXXXXXXXX (e.g., FTMT-20260926-A3F72C019B8D)
     """
     now = datetime.now(timezone.utc)
     date_part = now.strftime("%Y%m%d")
-    random_part = uuid.uuid4().hex[:4].upper()
+    random_part = uuid.uuid4().hex[:12].upper()
     return f"FTMT-{date_part}-{random_part}"
 
 
@@ -195,7 +199,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telegram_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
     telegram_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     interface_language: Mapped[str] = mapped_column(
         String(5), default=InterfaceLanguage.UZ.value, nullable=False
@@ -360,8 +364,8 @@ class Complaint(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tracking_id: Mapped[str] = mapped_column(
-        String(20), unique=True, nullable=False, index=True,
-        comment="Citizen-facing unique tracking ID: FTMT-YYYYMMDD-XXXX"
+        String(32), unique=True, nullable=False, index=True,
+        comment="Citizen-facing unique tracking ID: FTMT-YYYYMMDD-XXXXXXXXXXXX"
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
 
@@ -391,6 +395,10 @@ class Complaint(Base):
         String(10), nullable=True,
         comment="DISABLED by default. See LEGAL-OPEN-QUESTIONS.md"
     )
+    passport_data: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True,
+        comment="PII: Passport details (Series and Number)"
+    )
 
     # Complaint content
     title: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -407,6 +415,19 @@ class Complaint(Base):
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     citizen_confirmed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    archived_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("admin_users.id"), nullable=True
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True,
+        comment="Soft deletion timestamp; complaint and audit history remain recoverable"
+    )
+    deleted_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("admin_users.id"), nullable=True
     )
 
     # Relationships
@@ -437,6 +458,9 @@ class Attachment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     complaint_id: Mapped[int] = mapped_column(ForeignKey("complaints.id"), nullable=False, index=True)
+    message_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("complaint_citizen_messages.id"), nullable=True, index=True
+    )
     file_type: Mapped[str] = mapped_column(String(20), nullable=False, comment="photo/video/document")
     file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     file_extension: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
@@ -590,7 +614,10 @@ class Notification(Base):
     complaint_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("complaints.id"), nullable=True, index=True
     )
-    recipient_telegram_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    deadline_extension_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("deadline_extensions.id"), nullable=True, index=True
+    )
+    recipient_telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     notification_type: Mapped[str] = mapped_column(String(50), nullable=False)
     message_text: Mapped[str] = mapped_column(Text, nullable=False)
     language: Mapped[str] = mapped_column(String(15), nullable=False)
@@ -599,6 +626,9 @@ class Notification(Base):
     telegram_message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     max_retries: Mapped[int] = mapped_column(Integer, default=3)
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -617,11 +647,12 @@ class AdminUser(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(30), nullable=False)
-    telegram_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, nullable=True)
+    telegram_id: Mapped[Optional[int]] = mapped_column(BigInteger, unique=True, nullable=True)
     organization_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("organizations.id"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     mfa_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, comment="MFA ready but not implemented yet"
     )
@@ -709,7 +740,7 @@ class RateLimit(Base):
     __tablename__ = "rate_limits"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telegram_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(50), nullable=False)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     count: Mapped[int] = mapped_column(Integer, default=1)

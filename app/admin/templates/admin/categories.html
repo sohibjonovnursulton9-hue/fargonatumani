@@ -1,0 +1,61 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Murojaat sohalari{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Murojaat sohalari</h1>
+<p class="text-muted">Soha nomlarini uch tilda boshqaring va qaysi idoralar ko‘rib chiqishini belgilang. O‘chirish o‘rniga faol holatini o‘zgartiring.</p>
+
+<div class="card mb-4"><div class="card-header">Yangi soha</div><div class="card-body">
+<form method="post" action="/admin/categories" class="row g-2" data-admin-feedback>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="col-md-2"><input class="form-control" name="code" placeholder="Kod: education" required maxlength="50"></div>
+    <div class="col-md-3"><input class="form-control" name="name_uz" placeholder="O‘zbekcha (lotin)" required maxlength="255"></div>
+    <div class="col-md-3"><input class="form-control" name="name_uz_cyrillic" placeholder="Ўзбекча (кирилл)" required maxlength="255"></div>
+    <div class="col-md-3"><input class="form-control" name="name_ru" placeholder="Русский" required maxlength="255"></div>
+    <div class="col-md-1"><input class="form-control" name="sort_order" type="number" value="0" title="Tartib"></div>
+    <div class="col-md-2"><input class="form-control" name="sla_days" type="number" min="1" max="365" placeholder="Muddat (kun)"></div>
+    <div class="col-md-4 form-check ms-2 mt-3"><input class="form-check-input" type="checkbox" name="is_emergency" value="true" id="newEmergency"><label class="form-check-label" for="newEmergency">Shoshilinch toifa</label></div>
+    <div class="col-12"><button class="btn btn-primary">Soha qo‘shish</button></div>
+</form></div></div>
+
+<h2 class="h5">Mavjud sohalar</h2>
+{% for category in categories %}
+<div class="card mb-3"><div class="card-body">
+    <form method="post" action="/admin/categories/{{ category.id }}" class="row g-2 align-items-center" data-admin-feedback>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="col-md-2"><label class="form-label">Kod</label><input class="form-control" name="code" value="{{ category.code }}" required></div>
+        <div class="col-md-3"><label class="form-label">Lotin</label><input class="form-control" name="name_uz" value="{{ category.name_uz }}" required></div>
+        <div class="col-md-3"><label class="form-label">Кирилл</label><input class="form-control" name="name_uz_cyrillic" value="{{ category.name_uz_cyrillic }}" required></div>
+        <div class="col-md-3"><label class="form-label">Русский</label><input class="form-control" name="name_ru" value="{{ category.name_ru }}" required></div>
+        <div class="col-md-1"><label class="form-label">Tartib</label><input class="form-control" name="sort_order" type="number" value="{{ category.sort_order }}"></div>
+        <div class="col-md-2"><label class="form-label">Muddat, kun</label><input class="form-control" name="sla_days" type="number" min="1" max="365" value="{{ category.sla_days or '' }}"></div>
+        <div class="col-md-3"><label class="form-label">Ma’lumot holati</label><select class="form-select" name="is_provisional"><option value="true" {% if category.is_provisional %}selected{% endif %}>Hokimlik tasdig‘i kutilmoqda</option><option value="false" {% if not category.is_provisional %}selected{% endif %}>Rasmiy manba tasdiqlangan</option></select></div>
+        <div class="col-md-4 form-check ms-2 mt-3"><input class="form-check-input" type="checkbox" name="is_emergency" value="true" id="emergency{{ category.id }}" {% if category.is_emergency %}checked{% endif %}><label class="form-check-label" for="emergency{{ category.id }}">Shoshilinch</label></div>
+        <div class="col-12 d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-primary">Saqlash</button>
+            <span class="badge {% if category.is_active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{% if category.is_active %}Faol{% else %}Nofaol{% endif %}</span>
+            {% if category.is_provisional %}<span class="badge text-bg-warning">Tasdiq kutilmoqda</span>{% endif %}
+        </div>
+    </form>
+    <form method="post" action="/admin/categories/{{ category.id }}/status" class="mt-2" data-admin-feedback>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="is_active" value="{% if category.is_active %}false{% else %}true{% endif %}">
+        <button class="btn btn-sm btn-outline-secondary">{% if category.is_active %}Faolsizlantirish{% else %}Faollashtirish{% endif %}</button>
+    </form>
+</div></div>
+{% else %}<p class="text-muted">Hali soha kiritilmagan.</p>{% endfor %}
+
+<h2 class="h5 mt-4">Soha va idoralarni bog‘lash</h2>
+<div class="table-responsive"><table class="table table-striped align-middle"><thead><tr><th>Soha</th><th>Idora</th><th>Asosiy idora</th><th>Amal</th></tr></thead><tbody>
+{% for mapping, category, organization in mappings %}
+<tr><td>{{ category.name_uz }}</td><td>{{ organization.name_uz }}</td><td>{% if mapping.is_primary %}Ha{% else %}Yo‘q{% endif %}</td><td><form method="post" action="/admin/categories/{{ category.id }}/organizations/{{ organization.id }}/remove" data-admin-feedback><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-sm btn-outline-danger">Bog‘lanishni olib tashlash</button></form></td></tr>
+{% else %}<tr><td colspan="4" class="text-muted">Bog‘lanishlar yo‘q.</td></tr>{% endfor %}
+</tbody></table></div>
+{% for category in categories %}
+<form method="post" action="/admin/categories/{{ category.id }}/organizations" class="row g-2 mb-2" data-admin-feedback>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="is_primary" value="false">
+    <div class="col-md-4"><select class="form-select" name="organization_id" required><option value="">{{ category.name_uz }} — idora tanlang</option>{% for org in organizations if org.is_active %}<option value="{{ org.id }}">{{ org.name_uz }}</option>{% endfor %}</select></div>
+    <div class="col-md-3 form-check mt-2"><input class="form-check-input" type="checkbox" name="is_primary" value="true" id="primary{{ category.id }}"><label class="form-check-label" for="primary{{ category.id }}">Asosiy idora</label></div>
+    <div class="col-md-2"><button class="btn btn-outline-primary">Bog‘lash</button></div>
+</form>
+{% endfor %}
+{% endblock %}

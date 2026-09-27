@@ -108,18 +108,18 @@ class TestTrackingId:
     """Test tracking ID generation."""
 
     def test_format(self):
-        """Tracking ID should match FTMT-YYYYMMDD-XXXX format."""
+        """Tracking ID should match FTMT-YYYYMMDD-XXXXXXXXXXXX format."""
         from app.models import generate_tracking_id
         tid = generate_tracking_id()
         assert tid.startswith("FTMT-")
         parts = tid.split("-")
         assert len(parts) == 3
         assert len(parts[1]) == 8  # YYYYMMDD
-        assert len(parts[2]) == 4  # 4 hex chars
+        assert len(parts[2]) == 12  # 12 hex chars
 
     def test_uniqueness(self):
         """Multiple calls should (almost always) generate different IDs."""
         from app.models import generate_tracking_id
         ids = {generate_tracking_id() for _ in range(100)}
-        # With 4 hex chars (65536 possibilities), 100 IDs should all be unique
+        # A 12-hex suffix makes collisions negligible for this sample.
         assert len(ids) == 100

@@ -1,0 +1,100 @@
+{% extends "admin/base.html" %}
+{% block title %}Adminlar — FTMT{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">FOYDALANUVCHI VA HUQUQLAR</p><h1>Adminlar</h1><p class="page-subtitle">Xodim roli, idorasi va Telegram xabarnoma ulanishini boshqaring.</p></div>
+  <span class="count-chip">{{ users|length }} ta hisob</span>
+</section>
+
+<details class="control-section user-create">
+  <summary><strong>Yangi admin qo‘shish</strong><span>Bir martalik parol faqat yaratilganda ko‘rsatiladi.</span></summary>
+  <form id="createUserForm" method="post" action="/admin/users" class="user-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Login<input class="form-control" type="text" name="username" autocomplete="off" minlength="3" maxlength="100" required></label>
+    <label>F.I.Sh.<input class="form-control" type="text" name="full_name" maxlength="255" required></label>
+    <label>Rol<select class="form-select" name="role" required data-role-select>
+      <option value="super_admin">Super admin</option><option value="district_supervisor">Tuman nazoratchisi</option>
+      <option value="agency_head">Idora rahbari</option><option value="executor">Ijrochi xodim</option><option value="auditor">Auditor · faqat o‘qish</option>
+    </select></label>
+    <label class="organization-field">Idora<select class="form-select" name="organization_id"><option value="">Tanlang</option>{% for org in orgs %}<option value="{{ org.id }}" {% if not org.is_active %}disabled{% endif %}>{{ org.name_uz }}{% if not org.is_active %} · faol emas{% endif %}</option>{% endfor %}</select></label>
+    <label>Telegram ID · ixtiyoriy<input class="form-control" type="number" name="telegram_id" min="1" inputmode="numeric"></label>
+    <div class="user-form-action"><button id="create-user-submit" class="btn btn-primary" type="submit">Hisob yaratish</button></div>
+  </form>
+  <div id="new-user-result" class="alert alert-success d-none mt-3" role="status"></div>
+  <div id="new-user-error" class="alert alert-danger d-none mt-3" role="alert"></div>
+</details>
+
+<section class="control-section">
+  <div class="section-heading"><p class="eyebrow">HISOBLAR RO‘YXATI</p><h2>Rollar va holat</h2><p>Rol yoki idorani o‘zgartirish darhol amal qiladi va auditga yoziladi.</p></div>
+  {% if users %}
+  <div class="table-responsive"><table class="table admin-table mb-0"><thead><tr><th>Login</th><th>F.I.Sh.</th><th>Rol</th><th>Idora</th><th>Telegram</th><th>Holat</th><th>Amallar</th></tr></thead><tbody>
+  {% for user in users %}<tr>
+    <td><strong>{{ user.username }}</strong></td><td>{{ user.full_name }}</td>
+    <td><span class="badge rounded-pill text-bg-light border">{{ user.role|replace('_',' ')|title }}</span></td>
+    <td>{{ org_names.get(user.organization_id, '—') if user.organization_id else '—' }}</td>
+    <td>{{ 'Ulangan' if user.telegram_id else 'Ulanmagan' }}</td>
+    <td><span class="status-pill {% if user.is_active %}status-live{% else %}status-paused{% endif %}"><span class="status-dot"></span>{{ 'Faol' if user.is_active else 'O‘chirilgan' }}</span></td>
+    <td class="user-actions">
+      <details class="user-edit"><summary class="btn btn-sm btn-outline-primary">Tahrirlash</summary>
+        <form method="post" action="/admin/users/{{ user.id }}/edit" class="user-edit-form" data-admin-feedback>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Login<input class="form-control" type="text" name="username" value="{{ user.username }}" minlength="3" maxlength="100" required></label>
+          <label>F.I.Sh.<input class="form-control" type="text" name="full_name" value="{{ user.full_name }}" maxlength="255" required></label>
+          <label>Rol<select class="form-select" name="role" required>
+            {% for key, label in [('super_admin','Super admin'),('district_supervisor','Tuman nazoratchisi'),('agency_head','Idora rahbari'),('executor','Ijrochi xodim'),('auditor','Auditor · faqat o‘qish')] %}<option value="{{ key }}" {% if user.role == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select></label>
+          <label>Idora<select class="form-select" name="organization_id"><option value="">Idora talab qilinmaydi</option>{% for org in orgs %}<option value="{{ org.id }}" {% if user.organization_id == org.id %}selected{% endif %} {% if not org.is_active and user.organization_id != org.id %}disabled{% endif %}>{{ org.name_uz }}{% if not org.is_active %} · faol emas{% endif %}</option>{% endfor %}</select></label>
+          <label>Telegram ID<input class="form-control" type="number" name="telegram_id" value="{{ user.telegram_id or '' }}" min="1" inputmode="numeric"></label>
+          <button class="btn btn-primary" type="submit">O‘zgarishni saqlash</button>
+        </form>
+      </details>
+      <form method="post" action="/admin/users/{{ user.id }}/status" data-admin-feedback>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="is_active" value="{% if user.is_active %}False{% else %}True{% endif %}">
+        <button class="btn btn-sm {% if user.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %}" type="submit">{{ 'O‘chirish' if user.is_active else 'Tiklash' }}</button>
+      </form>
+    </td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty-state"><strong>Admin hisobi yo‘q</strong><p>Birinchi xodim hisobini yuqoridagi tugma orqali yarating.</p></div>{% endif %}
+</section>
+<script>
+const roleNeedsOrg = role => role === 'agency_head' || role === 'executor';
+document.querySelectorAll('[data-role-select]').forEach(select => {
+  const form = select.closest('form');
+  const field = form.querySelector('.organization-field');
+  const update = () => { field.hidden = !roleNeedsOrg(select.value); };
+  select.addEventListener('change', update);
+  update();
+});
+document.querySelectorAll('.user-edit-form').forEach(form => {
+  const role = form.querySelector('select[name="role"]');
+  const organization = form.querySelector('select[name="organization_id"]');
+  const update = () => { organization.required = roleNeedsOrg(role.value); };
+  role.addEventListener('change', update);
+  update();
+});
+document.getElementById('createUserForm')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = document.getElementById('create-user-submit');
+  const result = document.getElementById('new-user-result');
+  const error = document.getElementById('new-user-error');
+  result.classList.add('d-none'); error.classList.add('d-none');
+  button.disabled = true; button.textContent = 'Yaratilmoqda…';
+  try {
+    const response = await fetch(form.action, {method:'POST', body:new FormData(form)});
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || 'Hisob yaratilmadi.');
+    result.textContent = `${body.message} Login: ${form.elements.username.value}. Bir martalik parol: ${body.temp_password}`;
+    result.classList.remove('d-none');
+    form.reset();
+    document.querySelector('[data-role-select]')?.dispatchEvent(new Event('change'));
+  } catch (exception) {
+    error.textContent = `Xatolik: ${exception.message || 'Hisob yaratilmadi.'}`;
+    error.classList.remove('d-none');
+  } finally {
+    button.disabled = false; button.textContent = 'Hisob yaratish';
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "admin/base.html" %}
+{% block title %}Bot xabarlari · FTMT{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div><p class="eyebrow">NAZORAT</p><h1>Bot xabarlari</h1><p class="text-secondary mb-0">Telegram’ga yuboriladigan xabarnomalar navbati va yetkazish holati.</p></div>
+</header>
+
+{% if retried %}<div class="alert alert-success" role="status">#{{ retried }} xabarnoma qayta urinish navbatiga qo‘yildi. Natijani shu sahifada kuzating.</div>{% endif %}
+
+<section class="row g-3 mb-4" aria-label="Xabarnoma holatlari">
+  <div class="col-6 col-xl-3"><a class="card h-100 text-decoration-none" href="/admin/notifications?status=open"><div class="card-body"><small class="text-secondary">Ochiq navbat</small><div class="fs-3 fw-bold text-dark">{{ counts.open }}</div></div></a></div>
+  <div class="col-6 col-xl-3"><a class="card h-100 text-decoration-none" href="/admin/notifications?status=pending"><div class="card-body"><small class="text-secondary">Yuborishga tayyor</small><div class="fs-3 fw-bold text-primary">{{ counts.pending }}</div></div></a></div>
+  <div class="col-6 col-xl-3"><a class="card h-100 text-decoration-none" href="/admin/notifications?status=retrying"><div class="card-body"><small class="text-secondary">Qayta urinish kutilmoqda</small><div class="fs-3 fw-bold text-warning">{{ counts.retrying }}</div></div></a></div>
+  <div class="col-6 col-xl-3"><a class="card h-100 text-decoration-none" href="/admin/notifications?status=failed"><div class="card-body"><small class="text-secondary">Yakuniy xato</small><div class="fs-3 fw-bold text-danger">{{ counts.failed }}</div></div></a></div>
+</section>
+
+<section class="card border-0 shadow-sm">
+  <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2 py-3">
+    <div><h2 class="h5 mb-1">Navbat yozuvlari</h2><small class="text-secondary">{{ total }} ta yozuv · xabar matni maxfiylik uchun ko‘rsatilmaydi</small></div>
+    <nav class="d-flex flex-wrap gap-2" aria-label="Navbat filtri">
+      {% for value, label in [('open','Ochiq'),('pending','Tayyor'),('retrying','Kutmoqda'),('failed','Xatolik'),('sent','Yuborilgan'),('all','Barchasi')] %}
+      <a class="btn btn-sm {% if status == value %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/notifications?status={{ value }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+  </div>
+  {% if items %}
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead><tr><th>ID / murojaat</th><th>Qabul qiluvchi</th><th>Holat</th><th>Urinishlar</th><th>Keyingi urinish</th><th>Xato</th><th>Yaratilgan</th><th>Amal</th></tr></thead>
+      <tbody>
+      {% for item in items %}{% set notice = item.notification %}
+        <tr>
+          <td><strong>#{{ notice.id }}</strong><br><small class="text-secondary">{% if notice.complaint_id %}Murojaat #{{ notice.complaint_id }}{% elif notice.deadline_extension_id %}Muddat #{{ notice.deadline_extension_id }}{% else %}Tizim{% endif %}</small><br><small class="text-secondary">{{ notice.notification_type|replace('_',' ')|title }}</small></td>
+          <td><span title="Telegram ID maxfiylik uchun qisqartirilgan">{{ item.masked_recipient }}</span><br><small class="text-secondary">{{ notice.language }}</small></td>
+          <td>{% if item.status == 'sent' %}<span class="badge text-bg-success">Yuborildi</span>{% elif item.status == 'failed' %}<span class="badge text-bg-danger">Yakuniy xato</span>{% elif item.status == 'retrying' %}<span class="badge text-bg-warning">Kutilmoqda</span>{% else %}<span class="badge text-bg-primary">Navbatda</span>{% endif %}{% if notice.sent_at %}<br><small class="text-secondary">{{ notice.sent_at|tashkent_tz }}</small>{% endif %}</td>
+          <td>{{ notice.retry_count }} / {{ notice.max_retries }}</td>
+          <td>{% if notice.next_retry_at %}{{ notice.next_retry_at|tashkent_tz }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td>{% if item.safe_error %}<code>{{ item.safe_error }}</code>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td>{{ notice.created_at|tashkent_tz }}</td>
+          <td>
+          {% if item.status == 'failed' and notice.max_retries < 10 %}
+            <form method="post" action="/admin/notifications/{{ notice.id }}/retry" class="d-grid gap-1" style="min-width:180px">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label class="visually-hidden" for="reason-{{ notice.id }}">Qayta yuborish sababi</label>
+              <select id="reason-{{ notice.id }}" name="reason" class="form-select form-select-sm" required>
+                <option value="" selected disabled>Sababni tanlang</option>
+                {% for code, label in retry_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+              </select>
+              <button class="btn btn-sm btn-outline-primary" type="submit">Qayta navbatga qo‘yish</button>
+            </form>
+          {% elif item.status == 'failed' %}<small class="text-secondary">Urinish chegarasi tugagan</small>
+          {% else %}<span class="text-secondary">—</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-5 text-center"><div class="fs-2 mb-2" aria-hidden="true">✓</div><h3 class="h6">Bu filtrda yozuv yo‘q</h3><p class="text-secondary mb-0">Yangi xabarnomalar paydo bo‘lsa, holati shu yerda ko‘rinadi.</p></div>
+  {% endif %}
+  {% if total_pages > 1 %}<footer class="card-footer bg-white d-flex justify-content-between align-items-center"><small class="text-secondary">{{ page }} / {{ total_pages }}-sahifa</small><div class="d-flex gap-2">{% if page > 1 %}<a class="btn btn-sm btn-outline-secondary" href="/admin/notifications?status={{ status }}&page={{ page - 1 }}">Oldingi</a>{% endif %}{% if page < total_pages %}<a class="btn btn-sm btn-outline-secondary" href="/admin/notifications?status={{ status }}&page={{ page + 1 }}">Keyingi</a>{% endif %}</div></footer>{% endif %}
+</section>
+<p class="small text-secondary mt-3 mb-0">Qo‘lda qayta yuborish faqat avtomatik urinishlari tugagan xabarlarda ishlaydi. Har bir amal audit jurnaliga yoziladi; xabar mazmuni panelda ko‘rsatilmaydi.</p>
+{% endblock %}

@@ -1,79 +1,49 @@
 {% extends "admin/base.html" %}
-
-{% block title %}Statistics - FTMT Admin{% endblock %}
-
+{% block title %}Hisobotlar — FTMT{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Statistics</h1>
+<section class="page-heading">
+  <div><p class="eyebrow">TAHLIL VA NATIJALAR</p><h1>Hisobotlar</h1><p class="page-subtitle">Ko‘rsatkichlar joriy bazadagi murojaatlardan hisoblanadi.</p></div>
+  <span class="status-pill"><span class="status-dot"></span>Jonli ma’lumotlar</span>
+</section>
+
+{% set active_total = stats.submitted + stats.triage + stats.routed + stats.in_progress + stats.reopened %}
+<div class="row g-3 mb-4 stats-metrics">
+  <div class="col-6 col-xl-3"><article class="stat-card stat-card--blue"><span class="stat-orb" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v15H4zM8 9h8M8 13h8M8 17h4"/></svg></span><p>Jami murojaat</p><strong>{{ stats.total }}</strong><small>Faol yozuvlar</small></article></div>
+  <div class="col-6 col-xl-3"><article class="stat-card stat-card--amber"><span class="stat-orb" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg></span><p>Ko‘rib chiqilmoqda</p><strong>{{ active_total }}</strong><small>Yangi va jarayondagi</small></article></div>
+  <div class="col-6 col-xl-3"><article class="stat-card stat-card--green"><span class="stat-orb" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8 12 2.5 2.5L16 9"/></svg></span><p>Hal qilingan</p><strong>{{ stats.resolved }}</strong><small>Yakunlangan ishlar</small></article></div>
+  <div class="col-6 col-xl-3"><article class="stat-card stat-card--red"><span class="stat-orb" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/><circle cx="12" cy="12" r="8.5"/></svg></span><p>Rad etilgan</p><strong>{{ stats.rejected }}</strong><small>Sababi tarixda saqlanadi</small></article></div>
 </div>
 
-<div class="row">
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header">Complaint Statuses</div>
-            <div class="card-body">
-                <ul class="list-group">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Total
-                        <span class="badge bg-primary rounded-pill">{{ stats.total }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Submitted (Pending Triage)
-                        <span class="badge bg-secondary rounded-pill">{{ stats.submitted }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Triage
-                        <span class="badge bg-warning rounded-pill text-dark">{{ stats.triage }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Routed
-                        <span class="badge bg-info rounded-pill text-dark">{{ stats.routed }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        In Progress
-                        <span class="badge bg-primary rounded-pill">{{ stats.in_progress }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Resolved
-                        <span class="badge bg-success rounded-pill">{{ stats.resolved }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Rejected
-                        <span class="badge bg-danger rounded-pill">{{ stats.rejected }}</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
+{% set chart_rows = [
+  ('submitted', 'Yangi', stats.submitted),
+  ('triage', 'Saralash', stats.triage),
+  ('routed', 'Idoraga yuborilgan', stats.routed),
+  ('progress', 'Jarayonda', stats.in_progress),
+  ('reopened', 'Qayta ochilgan', stats.reopened),
+  ('resolved', 'Hal qilingan', stats.resolved),
+  ('rejected', 'Rad etilgan', stats.rejected)
+] %}
+{% set chart_max = [stats.submitted, stats.triage, stats.routed, stats.in_progress, stats.reopened, stats.resolved, stats.rejected]|max %}
+<div class="row g-4">
+  <div class="col-xl-7"><section class="control-section stats-depth">
+    <div class="section-heading section-heading-between"><div><p class="eyebrow">HOLATLAR TAQSIMOTI</p><h2>Murojaatlar oqimi</h2><p>Ustun balandligi har bir holatdagi haqiqiy yozuvlar soniga mos.</p></div><span class="count-chip">{{ stats.total }} ta</span></div>
+    {% if stats.total %}
+    <div class="chart-scene" role="group" aria-label="Murojaatlar holatlari grafigi, jami {{ stats.total }} ta">
+      <div class="chart-columns">
+      {% for key, label, value in chart_rows %}
+        <div class="chart-column"><strong class="chart-value">{{ value }}</strong><div class="chart-column__track"><div class="chart-bar chart-bar--{{ key }} {% if value %}chart-bar--visible{% endif %}" style="--bar-size:{{ ((value / chart_max) * 100)|round(1) if chart_max else 0 }}%"></div></div><span class="chart-label">{{ label }}</span></div>
+      {% endfor %}
+      </div>
     </div>
-    
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header">Resolution Time (Hours)</div>
-            <div class="card-body">
-                <ul class="list-group">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Sample Size
-                        <span class="badge bg-secondary rounded-pill">{{ res_time.count }}</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Median Resolution Time
-                        <span class="badge bg-info rounded-pill text-dark">{{ res_time.median_hours or 'N/A' }} hrs</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        90th Percentile Time
-                        <span class="badge bg-warning rounded-pill text-dark">{{ res_time.p90_hours or 'N/A' }} hrs</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Minimum Time
-                        <span class="badge bg-success rounded-pill">{{ res_time.min_hours or 'N/A' }} hrs</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        Maximum Time
-                        <span class="badge bg-danger rounded-pill">{{ res_time.max_hours or 'N/A' }} hrs</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </div>
+    {% else %}<div class="empty-state"><strong>Hozircha statistika yo‘q</strong><p>Murojaatlar kelgach, holatlar grafigi shu yerda ko‘rinadi.</p></div>{% endif %}
+  </section></div>
+  <div class="col-xl-5"><section class="control-section resolution-card h-100">
+    <div class="section-heading"><p class="eyebrow">KO‘RIB CHIQISH VAQTI</p><h2>Hal etish tezligi</h2><p>Faqat yakunlangan, arxivlanmagan murojaatlar.</p></div>
+    <div class="resolution-hero"><span>Median vaqt</span><strong>{{ res_time.median_hours if res_time.median_hours is not none else '—' }}<small>soat</small></strong><small>{{ res_time.count }} ta yakunlangan murojaat asosida</small></div>
+    <div class="resolution-row"><span>95-foizlik vaqt chegarasi</span><strong>{{ res_time.p95_hours if res_time.p95_hours is not none else '—' }} soat</strong></div>
+    <div class="resolution-row"><span>Eng tez</span><strong>{{ res_time.min_hours if res_time.min_hours is not none else '—' }} soat</strong></div>
+    <div class="resolution-row"><span>Eng uzoq</span><strong>{{ res_time.max_hours if res_time.max_hours is not none else '—' }} soat</strong></div>
+    {% if not res_time.count %}<div class="empty-state mt-3">Yakunlangan murojaat hali yo‘q.</div>{% endif %}
+  </section></div>
 </div>
 {% endblock %}

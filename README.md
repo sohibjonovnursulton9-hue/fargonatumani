@@ -30,46 +30,62 @@
 - Git
 - SQLite (for dev) or PostgreSQL (for prod)
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Local Setup)
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd bot-2026
-   ```
-
-2. **Create environment variables:**
+1. **Create the environment file:**
    ```bash
    cp .env.example .env
-   # Edit .env with your specific tokens and database credentials
    ```
+   *Do NOT share your `.env` contents with anyone. It is ignored by Git.*
 
-3. **Install dependencies:**
+2. **Configure mandatory secrets in `.env`:**
+   - `TELEGRAM_BOT_TOKEN`: Paste the token you got from BotFather (e.g. `1234:ABC...`).
+   - `ADMIN_SECRET_KEY`: Generate a random string using `python -c "import secrets; print(secrets.token_hex(32))"` and paste it here.
+
+3. **Configure the Initial Super Admin:**
+   The first admin user is a Web Panel user but can also be linked to a Telegram ID.
+   - Set `INITIAL_ADMIN_USERNAME` and `INITIAL_ADMIN_PASSWORD` in `.env`. Choose a secure password!
+   - To get your Telegram ID, message a bot like `@userinfobot` and paste the numeric ID into `INITIAL_ADMIN_TELEGRAM_ID`.
+   - For a local demo only, set `SEED_DEMO_DATA=true`; the first development startup creates provisional demo catalogs and the configured admin. Demo names are not official hokimlik data.
+   - If demo seeding is off, the first development startup still creates the configured admin when its password has at least 12 characters. `python scripts/reset_admin.py` is available for a local password reset.
+
+4. **Install dependencies:**
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
+   # On Windows: venv\Scripts\activate
+   # On Linux/Mac: source venv/bin/activate
+   pip install -e ".[dev]"
    ```
 
-4. **Run migrations:**
+5. **Apply Database Migrations:**
    ```bash
-   alembic upgrade head
+   # Applies the Alembic schema to the database (defaults to SQLite locally)
+   python -m alembic upgrade head
    ```
 
-5. **Seed demo data (Optional):**
+6. **Start the Application:**
+   *Make sure you have filled in the `.env` file first!*
+
+   **Run the Telegram bot and admin panel together:**
    ```bash
-   python scripts/seed_demo_data.py
+   python -m app.server
    ```
+   Open `http://127.0.0.1:8000/`; it redirects to the admin login page. Run only one Telegram polling process for a bot token.
 
-6. **Start the application:**
-   - **Start the Telegram Bot:**
-     ```bash
-     python -m bot.main
-     ```
-   - **Start the Admin Panel:**
-     ```bash
-     uvicorn api.main:app --reload
-     ```
+## Railway deployment
+
+The repository contains a `Dockerfile` and `railway.json`. Create one PostgreSQL service and one application service from this repository. The application service runs `python -m app.server` and serves the admin panel on Railway's `PORT`; it runs the Telegram poller in the same process. Keep the application at one replica to avoid two pollers using the same token. Give the application a Railway-generated public domain. Its root URL opens `/admin/login`.
+
+Set the application variables in Railway, without committing or sharing their values:
+
+- `APP_ENV=production`, `SEED_DEMO_DATA=false`, `TELEGRAM_WEBHOOK_URL=`.
+- `DATABASE_URL`: a Railway variable reference to the PostgreSQL service's connection URL.
+- `TELEGRAM_BOT_TOKEN`: the bot token from BotFather.
+- `ADMIN_SECRET_KEY`: a random value of at least 32 characters.
+- `INITIAL_ADMIN_USERNAME` and `INITIAL_ADMIN_PASSWORD`: the first admin credentials; password must be at least 12 characters and at most 72 UTF-8 bytes. Set these only in Railway's private variables. The first login requires a password change.
+- Optionally `INITIAL_ADMIN_TELEGRAM_ID` to receive supervisor notifications.
+
+The server applies Alembic migrations before starting. `/health` checks database connectivity. A new production database has no demo categories, organizations or MFY entries. The admin must review and import the supplied 58-name MFY catalog and configure approved category-to-organization routing before citizens can submit appeals. Legal consent text, retention, official deadlines and organization details require hokimlik approval before public use. Do not copy local citizen data into Railway for a demonstration.
 
 ## 🧪 Testing
 Run the test suite using pytest:
@@ -81,17 +97,15 @@ pytest tests/
 ```
 bot-2026/
 ├── alembic/            # Database migrations
-├── api/                # FastAPI application (Admin Panel)
-├── bot/                # Telegram bot application
-├── core/               # Shared settings, db configurations, security
+├── app/                # Telegram bot, FastAPI admin, models and services
 ├── docs/               # Documentation (Requirements, etc.)
-├── models/             # SQLAlchemy models
-├── schemas/            # Pydantic schemas
-├── scripts/            # Helper scripts (e.g., seeding)
+├── scripts/            # Local admin reset helper
 ├── tests/              # Pytest cases
 ├── .env.example
+├── Dockerfile
+├── railway.json
 ├── README.md
-└── requirements.txt
+└── pyproject.toml
 ```
 
 ## 📜 License

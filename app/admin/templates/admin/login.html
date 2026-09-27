@@ -1,30 +1,42 @@
 {% extends "admin/base.html" %}
-
-{% block title %}Login - FTMT Admin{% endblock %}
-
+{% block title %}Admin login — FTMT{% endblock %}
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-4">
-        <div class="card shadow">
-            <div class="card-body">
-                <h3 class="card-title text-center mb-4">Admin Login</h3>
-                {% if error %}
-                <div class="alert alert-danger">{{ error }}</div>
-                {% endif %}
-                <form method="post" action="/admin/login">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <div class="mb-3">
-                        <label class="form-label">Username</label>
-                        <input type="text" name="username" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Password</label>
-                        <input type="password" name="password" class="form-control" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Sign in</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+<section class="auth-card" aria-labelledby="login-heading">
+  <header class="auth-brand"><span class="brand-mark" aria-hidden="true">FM</span>
+    <div><strong>FTMT</strong><small>Farg‘ona tumani murojaatlari</small></div></header>
+  <div class="auth-heading"><p class="eyebrow">XODIMLAR UCHUN</p>
+    <h1 id="login-heading">Admin login</h1>
+    <p>Boshqaruv paneliga kirish</p></div>
+  {% if error %}<div class="alert alert-danger" role="alert" aria-live="polite">{{ error }}</div>{% endif %}
+  <form method="post" action="/admin/login" id="login-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="mb-3"><label class="form-label" for="username">Foydalanuvchi nomi</label>
+      <input id="username" type="text" name="username" value="{{ username | default('') }}" class="form-control" autocomplete="username" required autofocus></div>
+    <div class="mb-4"><label class="form-label" for="password">Parol</label>
+      <div class="password-wrap"><input id="password" type="password" name="password" class="form-control" autocomplete="current-password" required>
+        <button class="password-toggle" type="button" id="password-toggle" aria-controls="password" aria-pressed="false">Ko‘rsatish</button></div></div>
+    <button type="submit" class="btn btn-primary btn-lg w-100" id="login-submit">
+      <span class="login-spinner" aria-hidden="true"></span><span class="login-label">Kirish</span></button>
+  </form>
+  <p class="auth-footnote">Faqat vakolatli xodimlar uchun.</p>
+</section>
+<script>
+(() => {
+  const password = document.getElementById('password');
+  const toggle = document.getElementById('password-toggle');
+  const form = document.getElementById('login-form');
+  const submit = document.getElementById('login-submit');
+  toggle.addEventListener('click', () => {
+    const visible = password.type === 'password';
+    password.type = visible ? 'text' : 'password';
+    toggle.textContent = visible ? 'Yashirish' : 'Ko‘rsatish';
+    toggle.setAttribute('aria-pressed', String(visible));
+  });
+  form.addEventListener('submit', () => {
+    submit.disabled = true;
+    submit.setAttribute('aria-busy', 'true');
+    submit.querySelector('.login-label').textContent = 'Tekshirilmoqda…';
+  });
+})();
+</script>
 {% endblock %}

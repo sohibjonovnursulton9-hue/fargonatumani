@@ -12,6 +12,7 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base
+from app import change_models as _change_models  # noqa: F401
 
 
 # Set test environment

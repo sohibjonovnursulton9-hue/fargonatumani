@@ -14,6 +14,9 @@ from typing import Any
 
 # PII patterns to redact in logs
 PII_PATTERNS = [
+    # Telegram Bot API URLs contain the bot token in the path.
+    (re.compile(r"https?://api\.telegram\.org/bot[^/\s]+", re.IGNORECASE),
+     "https://api.telegram.org/bot[TOKEN_REDACTED]"),
     # Phone numbers (+998...)
     (re.compile(r"\+998\d{9}"), "[PHONE_REDACTED]"),
     # Telegram file URLs
@@ -24,7 +27,7 @@ PII_PATTERNS = [
 PII_FIELD_NAMES = frozenset({
     "full_name", "phone", "phone_number", "address", "manzil",
     "complaint_text", "murojaat_matni", "description", "response_text",
-    "file_url", "file_path",
+    "file_url", "file_path", "password", "token", "secret", "cookie",
 })
 
 

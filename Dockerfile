@@ -4,21 +4,25 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+    gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency definition
 COPY pyproject.toml .
+COPY app ./app
 
-# Install Python dependencies
+# Install Python dependencies (prod includes asyncpg, gunicorn)
 RUN pip install --no-cache-dir .[prod]
 
-# Copy application code
-COPY . .
+# Copy migrations and the remaining runtime files. Local databases and secrets
+# are excluded by .dockerignore.
+COPY alembic ./alembic
+COPY alembic.ini .
 
-# Create non-root user
-RUN useradd --create-home appuser
+# The application only needs read access to its code and migrations.
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
-# Default command (overridden in docker-compose.yml)
-CMD ["python", "-m", "app.main"]
+# app.server runs migrations before starting the web and bot processes.
+CMD ["python", "-m", "app.server"]

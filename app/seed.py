@@ -2,7 +2,7 @@
 Demo seed data for development and testing.
 ALL DATA HERE IS PROVISIONAL / DEMO — not from official sources.
 
-⚠️ IMPORTANT:
+! IMPORTANT:
 - MFY list: Must be replaced with official hokimlik data
 - Categories: Must be confirmed by hokimlik
 - Organizations: Must be confirmed by hokimlik
@@ -17,7 +17,8 @@ import bcrypt
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.database import async_session_factory
+from app.database import get_session_factory
+from app.mfy_catalog import MFY_CATALOG
 from app.models import (
     AdminRole,
     AdminUser,
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # ============================================================================
 # PROVISIONAL Categories — 17 categories per requirements
-# ⚠️ All marked is_provisional=True
+# ! All marked is_provisional=True
 # ============================================================================
 DEMO_CATEGORIES = [
     ("education", "Maktabgacha va maktab ta'limi", "Мактабгача ва мактаб таълими", "Дошкольное и школьное образование", 1),
@@ -96,17 +97,11 @@ CATEGORY_ORG_MAP = {
 }
 
 # ============================================================================
-# DEMO MFY Areas — NOT official data
+# User-provided MFY roster — provisional until the Hokimlik confirms it.
 # ============================================================================
 DEMO_MFY_AREAS = [
-    ("Mustaqillik MFY", "Мустақиллик МФЙ", "МСГ Мустакиллик"),
-    ("Navoiy MFY", "Навоий МФЙ", "МСГ Навои"),
-    ("Amir Temur MFY", "Амир Темур МФЙ", "МСГ Амир Темур"),
-    ("Yoshlik MFY", "Ёшлик МФЙ", "МСГ Ёшлик"),
-    ("Bahor MFY", "Баҳор МФЙ", "МСГ Бахор"),
-    ("Tinchlik MFY", "Тинчлик МФЙ", "МСГ Тинчлик"),
-    ("Bog'bon MFY", "Боғбон МФЙ", "МСГ Богбон"),
-    ("Yangi hayot MFY", "Янги ҳаёт МФЙ", "МСГ Янги хаёт"),
+    (entry.name_uz, entry.name_uz_cyrillic, entry.name_ru)
+    for entry in MFY_CATALOG
 ]
 
 
@@ -115,13 +110,14 @@ async def seed_demo_data() -> None:
     Seed database with demo/provisional data.
     Idempotent: skips if data already exists.
     """
-    if async_session_factory is None:
-        raise RuntimeError("Database not initialized")
+    async with get_session_factory()() as session:
+        settings = get_settings()
+        await _ensure_initial_admin(session, settings)
 
-    async with async_session_factory() as session:
         # Check if already seeded
         result = await session.execute(select(Category).limit(1))
         if result.scalar_one_or_none() is not None:
+            await session.commit()
             logger.info("Database already seeded, skipping.")
             return
 
@@ -161,18 +157,18 @@ async def seed_demo_data() -> None:
             emergency_ru = None
             if is_emergency:
                 emergency_uz = (
-                    "⚠️ MUHIM: Hayot yoki sog'liqqa xavf bo'lsa, darhol:\n"
+                    "! MUHIM: Hayot yoki sog'liqqa xavf bo'lsa, darhol:\n"
                     "• Tez yordam: 103\n"
                     "• Politsiya: 102\n"
                     "• Favqulodda: 112\n"
-                    "⚠️ Bu raqamlar PLACEHOLDER — rasmiy tasdiqlanishi kerak."
+                    "! Bu raqamlar PLACEHOLDER — rasmiy tasdiqlanishi kerak."
                 )
                 emergency_ru = (
-                    "⚠️ ВАЖНО: При угрозе жизни или здоровью, немедленно звоните:\n"
+                    "! ВАЖНО: При угрозе жизни или здоровью, немедленно звоните:\n"
                     "• Скорая: 103\n"
                     "• Полиция: 102\n"
                     "• Экстренная: 112\n"
-                    "⚠️ Эти номера являются ЗАГЛУШКОЙ — требуется официальное подтверждение."
+                    "! Эти номера являются ЗАГЛУШКОЙ — требуется официальное подтверждение."
                 )
 
             cat = Category(
@@ -207,28 +203,46 @@ async def seed_demo_data() -> None:
                 )
                 session.add(mapping)
 
-        # --- Initial Admin User ---
-        settings = get_settings()
-        if settings.initial_admin_username and settings.initial_admin_password:
-            existing_admin = await session.execute(
-                select(AdminUser).where(AdminUser.username == settings.initial_admin_username)
-            )
-            if existing_admin.scalar_one_or_none() is None:
-                password_hash = bcrypt.hashpw(
-                    settings.initial_admin_password.encode(),
-                    bcrypt.gensalt(),
-                ).decode()
-                admin = AdminUser(
-                    username=settings.initial_admin_username,
-                    password_hash=password_hash,
-                    full_name="Tizim administratori",
-                    role=AdminRole.SUPER_ADMIN.value,
-                    telegram_id=int(settings.initial_admin_telegram_id)
-                    if settings.initial_admin_telegram_id
-                    else None,
-                )
-                session.add(admin)
-                logger.info("Initial super admin user created (username from env)")
-
         await session.commit()
-        logger.info("DEMO data seeded successfully. ⚠️ All data is PROVISIONAL.")
+        logger.info("DEMO data seeded successfully. ! All data is PROVISIONAL.")
+
+
+async def _ensure_initial_admin(session, settings) -> None:
+    """Create the configured first admin only when an explicitly strong password exists."""
+    if not settings.initial_admin_username:
+        return
+    existing = await session.execute(
+        select(AdminUser).where(AdminUser.username == settings.initial_admin_username)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+
+    raw_password = settings.initial_admin_password
+    placeholders = {
+        "123456",
+        "7971",
+        "change-me-immediately-to-a-strong-password",
+    }
+    if (
+        not raw_password or len(raw_password) < 12
+        or len(raw_password.encode("utf-8")) > 72
+        or raw_password.lower() in placeholders
+    ):
+        logger.error(
+            "Initial admin was not created: set a unique INITIAL_ADMIN_PASSWORD of at least 12 characters."
+        )
+        logger.error("Use the secure admin reset utility to create the first admin account.")
+        return
+
+    password_hash = bcrypt.hashpw(raw_password.encode(), bcrypt.gensalt()).decode()
+    session.add(AdminUser(
+        username=settings.initial_admin_username,
+        password_hash=password_hash,
+        full_name="Tizim administratori",
+        role=AdminRole.SUPER_ADMIN.value,
+        telegram_id=int(settings.initial_admin_telegram_id)
+        if settings.initial_admin_telegram_id
+        else None,
+        must_change_password=True,
+    ))
+    logger.info("Initial super admin user created (username from environment)")
