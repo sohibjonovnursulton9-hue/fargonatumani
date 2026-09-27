@@ -67,6 +67,8 @@ async def main() -> None:
             await server_task
             raise RuntimeError("Telegram bot stopped while admin server was running") from failure
         await server_task
+        if not server.started or not server.should_exit:
+            raise RuntimeError("Admin server stopped unexpectedly")
     finally:
         bot_task.cancel()
         await asyncio.gather(bot_task, return_exceptions=True)
