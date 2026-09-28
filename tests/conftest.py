@@ -18,6 +18,7 @@ from app import change_models as _change_models  # noqa: F401
 # Set test environment
 os.environ["TELEGRAM_BOT_TOKEN"] = "0000000000:TEST_TOKEN_NOT_REAL"
 os.environ["ADMIN_SECRET_KEY"] = "test-secret-key-not-for-production"
+os.environ["PII_ENCRYPTION_KEY"] = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
 os.environ["APP_ENV"] = "development"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 

@@ -5,8 +5,8 @@ This document lists ALL legal and regulatory questions that need official confir
 1. **Legal Status of Telegram Complaints:** 
    Does a complaint submitted via Telegram bot constitute an official registered complaint (murojaat) under Uzbekistan law? Or is it a preliminary submission that must be separately registered? Reference: O'zbekiston Respublikasi "Jismoniy va yuridik shaxslarning murojaatlari to'g'risida"gi Qonuni. **[NEEDS HOKIMLIK/LAWYER CONFIRMATION]**
 
-2. **Birth Date Collection:** 
-   Is collecting date of birth required by the complaints law? Currently disabled via feature flag. **[NEEDS LAWYER CONFIRMATION]** before enabling.
+2. **Birth Date and Passport Collection:**
+   The project owner stated on 2026-09-28 that collection is lawful and requested these fields. The bot now requires them. The precise legal citation, approved purpose, and written Hokimlik privacy notice have not been supplied here; obtain and archive those before public intake.
 
 3. **Consent Text:** 
    The privacy consent text shown to citizens is a **[PLACEHOLDER]**. Must be drafted/approved by a qualified lawyer familiar with Uzbekistan personal data protection law ("Shaxsiy ma'lumotlar to'g'risida"gi Qonun). **[NEEDS LAWYER DRAFTING]**

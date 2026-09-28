@@ -82,6 +82,7 @@ Set the application variables in Railway, without committing or sharing their va
 - `DATABASE_URL`: a Railway variable reference to the PostgreSQL service's connection URL.
 - `TELEGRAM_BOT_TOKEN`: the bot token from BotFather.
 - `ADMIN_SECRET_KEY`: a random value of at least 32 characters.
+- `PII_ENCRYPTION_KEY`: a persistent Fernet key generated with `Fernet.generate_key()`; keep it private and backed up. Changing or losing it makes stored passport and birth-date values unreadable.
 - `INITIAL_ADMIN_USERNAME` and `INITIAL_ADMIN_PASSWORD`: the first admin credentials; password must be at least 12 characters and at most 72 UTF-8 bytes. Set these only in Railway's private variables. The first login requires a password change.
 - Optionally `INITIAL_ADMIN_TELEGRAM_ID` to receive supervisor notifications.
 

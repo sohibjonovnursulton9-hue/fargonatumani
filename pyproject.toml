@@ -19,6 +19,7 @@ dependencies = [
     "apscheduler>=3.10.4",
     "itsdangerous>=2.1.2",
     "httpx>=0.25.0",
+    "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]

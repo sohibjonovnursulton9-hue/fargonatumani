@@ -20,6 +20,10 @@
       <hr><div class="control-grid">
         <div><span class="field-label">F.I.Sh.</span><strong>{{ complaint.full_name }}</strong></div>
         <div><span class="field-label">Aloqa raqami</span><strong>{{ complaint.phone_number }}</strong></div>
+        {% if admin.role in ['super_admin', 'district_supervisor'] %}
+        <div><span class="field-label">Pasport seriyasi va raqami</span><strong>{{ complaint.passport_data or 'Kiritilmagan' }}</strong></div>
+        <div><span class="field-label">Tug‘ilgan sana</span><strong>{{ complaint.birth_date or 'Kiritilmagan' }}</strong></div>
+        {% else %}<div><span class="field-label">Shaxsni tasdiqlovchi ma’lumotlar</span><strong>Faqat tuman vakolatli xodimlariga ko‘rinadi</strong></div>{% endif %}
         <div><span class="field-label">Hudud ID / manzil izohi</span><strong>{{ complaint.mfy_area_id or 'Ko‘rsatilmagan' }} · {{ complaint.address_detail or 'Ko‘rsatilmagan' }}</strong></div>
         <div><span class="field-label">Yo‘nalish / murojaat tili</span><strong>{{ complaint.category_id }} · {{ complaint.complaint_language }}</strong></div>
       </div>

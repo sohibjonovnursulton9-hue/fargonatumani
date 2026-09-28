@@ -504,6 +504,14 @@ async def detail_complaint(
     admin: AdminUser = Depends(get_current_admin), db: AsyncSession = Depends(get_session),
 ):
     complaint = await ensure_complaint_access(db, id, admin, include_deleted=deleted)
+    if admin.role in {AdminRole.SUPER_ADMIN.value, AdminRole.DISTRICT_SUPERVISOR.value}:
+        await db.refresh(complaint, attribute_names=["passport_data", "birth_date"])
+        await AuditService.log_event(
+            db, "identity_viewed", "complaint", "admin",
+            entity_id=str(complaint.id), actor_id=str(admin.id),
+            metadata={"fields": ["passport_data", "birth_date"]},
+        )
+        await db.commit()
 
     # Fetch related data
     events = (await db.execute(select(StatusEvent).where(StatusEvent.complaint_id == id).order_by(StatusEvent.created_at))).scalars().all()

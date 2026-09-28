@@ -121,11 +121,11 @@
 
   <section class="control-section">
     <div class="section-heading"><p class="eyebrow">MUROJAAT SHAKLI</p><h2>Maydonlar va yo‘riqnomalar</h2>
-      <p>F.I.Sh., telefon, mahalla, aniq manzil, sarlavha va murojaat matni majburiy. Pasport va tug‘ilgan sana yuridik asos tasdiqlanmaguncha yig‘ilmaydi.</p></div>
+      <p>F.I.Sh., telefon, pasport seriyasi va raqami, tug‘ilgan sana, mahalla, aniq manzil, sarlavha va murojaat matni majburiy.</p></div>
     <div class="feature-list">
-      {% for key, title in [('mfy','Mahalla / hudud'),('address','Manzil izohi'),('attachments','Ilovalar')] %}
+      {% for key, title in [('passport_data','Pasport seriyasi va raqami'),('birth_date','Tug‘ilgan sana'),('mfy','Mahalla / hudud'),('address','Manzil izohi'),('attachments','Ilovalar')] %}
       <div class="feature-item setting-toggle">
-        {% if key in ['mfy', 'address'] %}
+        {% if key in ['passport_data', 'birth_date', 'mfy', 'address'] %}
         <div><strong>{{ title }}</strong><small>Majburiy maydon · o‘chirib bo‘lmaydi</small></div>
         <span class="badge text-bg-primary">Majburiy</span>
         {% else %}
@@ -138,13 +138,13 @@
       {% endfor %}
     </div>
     <div class="control-grid language-grid mt-3">
-      {% for key, title in [('full_name','F.I.Sh.'),('phone','Telefon'),('mfy','Hudud'),('address','Manzil'),('title','Sarlavha'),('description','Murojaat matni'),('attachments','Ilovalar')] %}
+      {% for key, title in [('full_name','F.I.Sh.'),('phone','Telefon'),('passport_data','Pasport'),('birth_date','Tug‘ilgan sana'),('mfy','Hudud'),('address','Manzil'),('title','Sarlavha'),('description','Murojaat matni'),('attachments','Ilovalar')] %}
       {% for locale in ['uz','uz_cyrillic','ru'] %}
       <label><span class="field-label">{{ title }} · {{ locale_labels[locale] }}</span>
         <input class="form-control" name="hint_{{ key }}_{{ locale }}" value="{{ config.field_hints[key][locale] }}" maxlength="500"></label>
       {% endfor %}{% endfor %}
     </div>
-    <div class="alert alert-info mt-3 mb-0">Pasport va tug‘ilgan sana yig‘ish o‘chirilgan. Yoqish uchun hokimlik/yuristning tasdiqlangan qonuniy asosi kerak.</div>
+    <div class="alert alert-info mt-3 mb-0">Bu ikki maydon majburiy. Bazada shifrlanadi; to‘liq qiymat faqat tuman vakolatli rollariga ko‘rinadi.</div>
   </section>
 
   <section class="control-section">

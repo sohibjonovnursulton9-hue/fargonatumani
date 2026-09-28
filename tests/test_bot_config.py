@@ -113,18 +113,18 @@ async def test_published_settings_refresh_into_bot_runtime_without_restart(db_se
     assert bot_config_module.get_runtime_bot_config()["welcome_message_uz"] == value["welcome_message_uz"]
 
 
-def test_sensitive_identity_fields_stay_disabled_even_if_submitted_in_configuration():
+def test_sensitive_identity_fields_stay_required_even_if_disabled_in_configuration():
     unsafe = deepcopy(DEFAULT_BOT_CONFIG)
-    unsafe["form_fields"]["passport_data"] = {"enabled": True, "required": True}
-    unsafe["form_fields"]["birth_date"] = {"enabled": True, "required": True}
+    unsafe["form_fields"]["passport_data"] = {"enabled": False, "required": False}
+    unsafe["form_fields"]["birth_date"] = {"enabled": False, "required": False}
     unsafe["translation_overrides"] = {
         "consent_text": {"uz": "unapproved", "uz_cyrillic": "unapproved", "ru": "unapproved"},
         "main_menu": {"uz": "custom", "uz_cyrillic": "custom", "ru": "custom"},
         "unknown_key": {"uz": "ignored", "uz_cyrillic": "ignored", "ru": "ignored"},
     }
     safe = normalize_bot_config(unsafe)
-    assert safe["form_fields"]["passport_data"] == {"enabled": False, "required": False}
-    assert safe["form_fields"]["birth_date"] == {"enabled": False, "required": False}
+    assert safe["form_fields"]["passport_data"] == {"enabled": True, "required": True}
+    assert safe["form_fields"]["birth_date"] == {"enabled": True, "required": True}
     assert "consent_text" not in safe["translation_overrides"]
     assert "unknown_key" not in safe["translation_overrides"]
     assert safe["translation_overrides"]["main_menu"]["uz"] == "custom"
@@ -231,10 +231,11 @@ async def test_sensitive_identity_configuration_is_rejected_before_a_draft_is_sa
     )
     db_session.add(admin)
     await db_session.flush()
-    unsafe = deepcopy(DEFAULT_BOT_CONFIG)
-    unsafe["form_fields"]["passport_data"] = {"enabled": True, "required": True}
-    with pytest.raises(ValueError, match="Pasport"):
-        await save_bot_draft(db_session, unsafe, admin.id)
+    proposed = deepcopy(DEFAULT_BOT_CONFIG)
+    proposed["form_fields"]["passport_data"] = {"enabled": False, "required": False}
+    draft = await save_bot_draft(db_session, proposed, admin.id)
+    assert draft.id is not None
+    assert normalize_bot_config(proposed)["form_fields"]["passport_data"]["required"] is True
 
 
 def test_admin_translation_overrides_resolve_all_complaint_locales(monkeypatch):
@@ -427,7 +428,7 @@ async def test_complete_citizen_submission_flow_persists_address_and_tracking_id
     from unittest.mock import AsyncMock
 
     import app.bot as bot_module
-    from app.models import Category, Complaint, ConsentRecord, MFYArea, User
+    from app.models import Category, Complaint, ComplaintDraft, ConsentRecord, MFYArea, User
 
     telegram_id = 987654321
     user = User(telegram_id=telegram_id, interface_language="uz")
@@ -505,7 +506,12 @@ async def test_complete_citizen_submission_flow_persists_address_and_tracking_id
     assert await bot_module.handle_phone(
         message_update(contact=SimpleNamespace(phone_number="+998901234567", user_id=telegram_id)),
         context,
-    ) == bot_module.SELECT_MFY
+    ) == bot_module.ENTER_PASSPORT
+    assert await bot_module.handle_passport(message_update("AA1234567"), context) == bot_module.ENTER_BIRTH_DATE
+    assert await bot_module.handle_birth_date(message_update("01.01.1990"), context) == bot_module.SELECT_MFY
+    draft = (await db_session.execute(select(ComplaintDraft).where(ComplaintDraft.user_id == user.id))).scalar_one()
+    assert "AA1234567" not in draft.draft_data
+    assert "1990-01-01" not in draft.draft_data
     assert await bot_module.handle_mfy_selection(callback_update(f"mfy_{mfy.id}"), context) == bot_module.ENTER_ADDRESS
     assert await bot_module.handle_address(message_update("12, Bog‘bon ko‘chasi"), context) == bot_module.SELECT_CATEGORY
     assert await bot_module.handle_category(callback_update(f"cat_{category.id}"), context) == bot_module.ENTER_TITLE
@@ -522,6 +528,16 @@ async def test_complete_citizen_submission_flow_persists_address_and_tracking_id
     assert complaint.status == "submitted"
     assert complaint.mfy_area_id == mfy.id
     assert complaint.address_detail == "12, Bog‘bon ko‘chasi"
+    await db_session.refresh(complaint, attribute_names=["passport_data", "birth_date"])
+    assert complaint.passport_data == "AA1234567"
+    assert complaint.birth_date == "1990-01-01"
+    from sqlalchemy import text
+    raw = (await db_session.execute(text(
+        "SELECT passport_data, birth_date FROM complaints WHERE id = :id"
+    ), {"id": complaint.id})).one()
+    assert raw.passport_data.startswith("enc:v1:")
+    assert raw.birth_date.startswith("enc:v1:")
+    assert "AA1234567" not in raw.passport_data
     assert complaint.tracking_id.startswith("FTMT-")
     assert complaint.tracking_id in submit_update.callback_query.edit_message_text.await_args.args[0]
 

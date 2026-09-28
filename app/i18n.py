@@ -38,7 +38,8 @@ TEXTS: dict[str, dict[str, str]] = {
             "⚠️ _Bu matn hali rasmiy yurist tomonidan tasdiqlanmagan. "
             "Ishga tushirishdan oldin huquqiy ko'rib chiqish talab etiladi._\n\n"
             "Ushbu tizimdan foydalanish orqali siz quyidagilarga rozilik bildirasiz:\n"
-            "• Siz kiritgan shaxsiy ma'lumotlar (F.I.Sh., telefon raqami, manzil) "
+            "• Siz kiritgan shaxsiy ma'lumotlar (F.I.Sh., telefon raqami, manzil, "
+            "pasport seriyasi va raqami, tug‘ilgan sana) "
             "murojaatingizni ko'rib chiqish maqsadida qayta ishlanadi.\n"
             "• Ma'lumotlaringiz faqat mas'ul idora xodimlariga ko'rsatiladi.\n"
             "• Murojaatingiz va unga tegishli hujjatlar qonunda belgilangan muddat "
@@ -50,7 +51,8 @@ TEXTS: dict[str, dict[str, str]] = {
             "⚠️ _Данный текст ещё не утверждён юристом. "
             "Перед запуском требуется юридическая проверка._\n\n"
             "Используя данную систему, вы соглашаетесь на следующее:\n"
-            "• Ваши персональные данные (ФИО, номер телефона, адрес) "
+            "• Ваши персональные данные (ФИО, номер телефона, адрес, "
+            "серия и номер паспорта, дата рождения) "
             "будут обработаны для рассмотрения вашего обращения.\n"
             "• Ваши данные будут доступны только уполномоченным сотрудникам.\n"
             "• Ваше обращение и приложенные документы хранятся в течение "
@@ -169,12 +171,24 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Отправьте именно свой номер с помощью кнопки Telegram «Поделиться контактом».",
     },
     "enter_birth_date": {
-        "uz": "📅 *Tug'ilgan yili, oyi va kuni:*\n\nSanani quyidagi shaklda kiriting. Masalan: 01.01.1990\n\n_Bu maydon ixtiyoriy. O'tkazib yuborish mumkin._",
-        "ru": "📅 *Год, месяц и день рождения:*\n\nНапример: 01.01.1990\n\n_Это поле необязательное. Можно пропустить._",
+        "uz": "📅 *Tug‘ilgan sana (majburiy):*\n\nKun.oy.yil shaklida kiriting. Masalan: 01.01.1990.\n_Xabarni imkon bo‘lsa chatdan o‘chiramiz; bazada shifrlab saqlaymiz._",
+        "ru": "📅 *Дата рождения (обязательно):*\n\nФормат: день.месяц.год, например 01.01.1990.\n_По возможности удалим сообщение из чата; в базе сохраним в зашифрованном виде._",
     },
     "enter_passport": {
-        "uz": "🛂 *Pasport seriya raqami:*\n\nPasport seriyangiz va raqamini kiriting. Masalan: AA1234567\n\n_Bu maydon ixtiyoriy. O'tkazib yuborish mumkin._",
-        "ru": "🛂 *Серия и номер паспорта:*\n\nНапример: AA1234567\n\n_Это поле необязательное. Можно пропустить._",
+        "uz": "🛂 *Pasport seriyasi va raqami (majburiy):*\n\nMasalan: AA1234567.\n_Xabarni imkon bo‘lsa chatdan o‘chiramiz; bazada shifrlab saqlaymiz._",
+        "ru": "🛂 *Серия и номер паспорта (обязательно):*\n\nНапример: AA1234567.\n_По возможности удалим сообщение из чата; в базе сохраним в зашифрованном виде._",
+    },
+    "invalid_passport": {
+        "uz": "Pasport seriyasi va raqamini ikki lotin harfi va yetti raqam shaklida kiriting: AA1234567.",
+        "ru": "Введите серию и номер паспорта: две латинские буквы и семь цифр, например AA1234567.",
+    },
+    "invalid_birth_date": {
+        "uz": "Haqiqiy tug‘ilgan sanani kun.oy.yil shaklida kiriting: 01.01.1990.",
+        "ru": "Введите действительную дату рождения в формате день.месяц.год: 01.01.1990.",
+    },
+    "identity_required": {
+        "uz": "Bu ma’lumotni kiritish shart.",
+        "ru": "Это поле обязательно.",
     },
     "btn_skip": {
         "uz": "⏭ O'tkazib yuborish",
@@ -259,6 +273,10 @@ TEXTS: dict[str, dict[str, str]] = {
     "preview_phone": {
         "uz": "📱 *Telefon:* {phone}\n",
         "ru": "📱 *Телефон:* {phone}\n",
+    },
+    "preview_identity": {
+        "uz": "🛂 *Pasport:* {passport}\n📅 *Tug‘ilgan sana:* {birth}\n",
+        "ru": "🛂 *Паспорт:* {passport}\n📅 *Дата рождения:* {birth}\n",
     },
     "preview_address": {
         "uz": "📍 *Manzil:* {mfy}, {address}\n",
@@ -522,6 +540,8 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "btn_edit_name": {"uz": "👤 F.I.Sh.", "ru": "👤 ФИО"},
     "btn_edit_phone": {"uz": "📱 Telefon", "ru": "📱 Телефон"},
+    "btn_edit_passport": {"uz": "🛂 Pasport", "ru": "🛂 Паспорт"},
+    "btn_edit_birth_date": {"uz": "📅 Tug‘ilgan sana", "ru": "📅 Дата рождения"},
     "btn_edit_address": {"uz": "📍 Manzil", "ru": "📍 Адрес"},
     "btn_edit_category": {"uz": "📁 Soha", "ru": "📁 Сфера"},
     "btn_edit_title": {"uz": "📌 Sarlavha", "ru": "📌 Заголовок"},

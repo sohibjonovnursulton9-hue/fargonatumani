@@ -31,6 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.pii_crypto import EncryptedIdentity
 
 
 # ============================================================================
@@ -392,12 +393,12 @@ class Complaint(Base):
         Text, nullable=True, comment="PII: detailed address"
     )
     birth_date: Mapped[Optional[str]] = mapped_column(
-        String(10), nullable=True,
-        comment="DISABLED by default. See LEGAL-OPEN-QUESTIONS.md"
+        EncryptedIdentity(), nullable=True, deferred=True,
+        comment="PII: encrypted date of birth"
     )
     passport_data: Mapped[Optional[str]] = mapped_column(
-        String(20), nullable=True,
-        comment="PII: Passport details (Series and Number)"
+        EncryptedIdentity(), nullable=True, deferred=True,
+        comment="PII: encrypted passport series and number"
     )
 
     # Complaint content

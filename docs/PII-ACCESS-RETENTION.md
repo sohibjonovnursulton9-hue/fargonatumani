@@ -8,18 +8,20 @@ Bu hujjat koddagi himoya va ochiq qarorlarni qayd etadi. U hokimlikning qonuniy 
 - Fuqaro ismi va telefon raqami, hudud/manzil izohi, murojaat matni, yo‘nalish, til va ish tarixi.
 - Telegram attachment identifikatori; ayrim deploylarda ixtiyoriy lokal fayl yo‘li ham bo‘lishi mumkin.
 - Xodim akkaunti, roli, idora biriktiruvi, sessiya va audit voqealari.
-- Pasport raqami va tug‘ilgan sana bot oqimida majburiy emas; bot sozlamasidan bularni faollashtirish rad etiladi.
+- Pasport seriyasi/raqami va tug‘ilgan sana fuqaro formasida majburiy. Bot xabarlarni imkon bo‘lsa chatdan o‘chiradi; bazada bu ikki maydon Fernet bilan shifrlanadi, qoralamalarga yozilmaydi.
 
 Murojaat matni, ichki izoh va attachment ichida fuqaroning sezgir ma’lumoti bo‘lishi mumkin. Ism, telefon, murojaat matni/fayli, token yoki parolni application log yoki audit metadata’ga kiritmang.
 
 ## Kirish nazorati
 
 - Super-admin va tuman nazoratchisi tuman doirasidagi murojaatlarni ko‘radi.
+- Pasport va tug‘ilgan sananing to‘liq qiymati faqat super-admin va tuman nazoratchisi murojaat tafsilotida ko‘rinadi. Boshqa rollar uchun ular bazadan yuklanmaydi.
 - Idora rahbari o‘z idorasiga faol biriktirilgan murojaatlarni ko‘radi.
 - Ijrochi faqat o‘ziga faol biriktirilgan murojaatlarni ko‘radi.
 - Auditor o‘qish huquqiga ega; o‘zgartirishga ruxsat yo‘q.
 - Ichki izoh va attachment ochish murojaat ruxsati bilan tekshiriladi; attachment ochilishi auditga yoziladi.
 - Bot sirlarini admin panelda ko‘rsatmaydi.
+- `PII_ENCRYPTION_KEY` server muhitida alohida saqlanadi. Kalit yo‘qolsa shifrlangan qiymatlar tiklanmaydi; uni repozitoriyga yoki logga chiqarmaslik kerak.
 - Yangi admin cookie tokenlari bazada SHA-256 hash ko‘rinishida turadi. Eski ochiq tokenlar keyingi muvaffaqiyatli so‘rovda hashga aylantiriladi.
 - Admin URL javoblariga private, no-store header’i qo‘yiladi. Hozirgi lokal server qayta ishga tushmagani uchun so‘nggi middleware o‘zgarishi faol processda hali yuklanmagan.
 

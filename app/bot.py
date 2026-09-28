@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from telegram import (
     InlineKeyboardButton,
@@ -84,8 +84,26 @@ logger = get_logger(__name__)
     ADDITIONAL_INFO,
 ) = range(17)
 
-CONSENT_VERSION = "1.0-draft"
+CONSENT_VERSION = "1.1-identity"
 PHONE_REGEX = re.compile(r"^\+998\d{9}$")
+PASSPORT_REGEX = re.compile(r"^[A-Z]{2}\d{7}$")
+
+
+def normalize_passport(value: str) -> str | None:
+    candidate = re.sub(r"\s+", "", value).upper()
+    return candidate if PASSPORT_REGEX.fullmatch(candidate) else None
+
+
+def normalize_birth_date(value: str) -> str | None:
+    try:
+        parsed = datetime.strptime(value.strip(), "%d.%m.%Y").date()
+    except ValueError:
+        return None
+    if parsed.year < 1900 or parsed > date.today():
+        return None
+    return parsed.isoformat()
+
+
 MENU_ACTION_KEYS = (
     "btn_new_complaint",
     "btn_my_complaints",
@@ -627,6 +645,16 @@ async def resume_saved_draft(
             for category in await CatalogService.get_active_categories(session)
         }
 
+    if not isinstance(data.get("passport_data"), str) or not PASSPORT_REGEX.fullmatch(data["passport_data"]):
+        data.pop("passport_data", None)
+        return await prompt_passport(update, context, lang)
+    try:
+        birth = date.fromisoformat(data.get("birth_date", ""))
+    except (TypeError, ValueError):
+        birth = None
+    if birth is None or birth.year < 1900 or birth > date.today():
+        data.pop("birth_date", None)
+        return await prompt_birth_date(update, context, lang)
     if config["form_fields"]["mfy"]["required"] and data.get("mfy_area_id") not in active_mfy_ids:
         data.pop("mfy_area_id", None)
         return await prompt_mfy_selection(update, context, lang)
@@ -711,7 +739,7 @@ async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 
 async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Verify the citizen shared their own contact, then continue without sensitive ID data."""
+    """Verify the citizen shared their own contact before identity details."""
     lang = content_locale(context)
     if not update.message.contact:
         await update.message.reply_text(t("own_contact_required", lang))
@@ -728,12 +756,10 @@ async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return ENTER_PHONE
 
     context.user_data["phone_number"] = phone
-    context.user_data.pop("passport_data", None)
-    context.user_data.pop("birth_date", None)
     await save_draft(update.effective_user.id, context.user_data)
     if context.user_data.pop("_editing", False):
         return await show_preview(update, context)
-    return await prompt_mfy_selection(update, context, lang)
+    return await prompt_passport(update, context, lang)
 
 
 async def prompt_mfy_selection(
@@ -774,20 +800,62 @@ async def prompt_mfy_selection(
     return SELECT_MFY
 
 
-async def handle_passport(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Ignore legacy callbacks; passport collection stays disabled pending legal approval."""
-    context.user_data.pop("passport_data", None)
+async def prompt_passport(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str) -> int:
+    message = field_prompt(t("enter_passport", lang), "passport_data", context)
     if update.callback_query:
-        await update.callback_query.answer()
-    return await prompt_mfy_selection(update, context, context.user_data.get("lang", "uz"))
+        await update.callback_query.edit_message_text(message, parse_mode="Markdown")
+    else:
+        await update.effective_message.reply_text(message, parse_mode="Markdown")
+    return ENTER_PASSPORT
+
+
+async def handle_passport(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = content_locale(context)
+    if update.callback_query:
+        await update.callback_query.answer(t("identity_required", lang), show_alert=True)
+        return ENTER_PASSPORT
+    passport = normalize_passport(update.message.text or "")
+    if passport is None:
+        await update.message.reply_text(t("invalid_passport", lang))
+        return ENTER_PASSPORT
+    context.user_data["passport_data"] = passport
+    try:
+        await update.message.delete()
+    except Exception:
+        pass  # Telegram may not allow deleting the citizen's message.
+    await save_draft(update.effective_user.id, context.user_data)
+    if context.user_data.pop("_editing", False):
+        return await show_preview(update, context)
+    return await prompt_birth_date(update, context, lang)
+
+
+async def prompt_birth_date(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str) -> int:
+    message = field_prompt(t("enter_birth_date", lang), "birth_date", context)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(message, parse_mode="Markdown")
+    else:
+        await update.effective_message.reply_text(message, parse_mode="Markdown")
+    return ENTER_BIRTH_DATE
 
 
 async def handle_birth_date(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Ignore legacy callbacks; birth date collection stays disabled pending legal approval."""
-    context.user_data.pop("birth_date", None)
+    lang = content_locale(context)
     if update.callback_query:
-        await update.callback_query.answer()
-    return await prompt_mfy_selection(update, context, context.user_data.get("lang", "uz"))
+        await update.callback_query.answer(t("identity_required", lang), show_alert=True)
+        return ENTER_BIRTH_DATE
+    birth = normalize_birth_date(update.message.text or "")
+    if birth is None:
+        await update.message.reply_text(t("invalid_birth_date", lang))
+        return ENTER_BIRTH_DATE
+    context.user_data["birth_date"] = birth
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    await save_draft(update.effective_user.id, context.user_data)
+    if context.user_data.pop("_editing", False):
+        return await show_preview(update, context)
+    return await prompt_mfy_selection(update, context, lang)
 
 
 async def handle_mfy_selection(
@@ -1120,6 +1188,16 @@ async def show_preview(
     preview += t("preview_type", lang, type=escape_markdown(type_label, version=1))
     preview += t("preview_name", lang, name=escape_markdown(data.get("full_name", "—"), version=1))
     preview += t("preview_phone", lang, phone=escape_markdown(data.get("phone_number", "—"), version=1))
+    passport = data.get("passport_data", "")
+    if passport:
+        try:
+            birth_label = date.fromisoformat(data.get("birth_date", "")).strftime("%d.%m.%Y")
+        except ValueError:
+            birth_label = "—"
+        preview += t(
+            "preview_identity", lang,
+            passport=f"{passport[:2]}•••••{passport[-2:]}", birth=birth_label,
+        )
     preview += t(
         "preview_address", lang,
         mfy=escape_markdown(mfy_name or "—", version=1),
@@ -1178,6 +1256,8 @@ async def handle_preview_action(
         edit_buttons = [
             [InlineKeyboardButton(t("btn_edit_name", lang), callback_data="edit_name")],
             [InlineKeyboardButton(t("btn_edit_phone", lang), callback_data="edit_phone")],
+            [InlineKeyboardButton(t("btn_edit_passport", lang), callback_data="edit_passport")],
+            [InlineKeyboardButton(t("btn_edit_birth_date", lang), callback_data="edit_birth_date")],
             [InlineKeyboardButton(t("btn_edit_address", lang), callback_data="edit_address")],
             [InlineKeyboardButton(t("btn_edit_category", lang), callback_data="edit_category")],
             [InlineKeyboardButton(t("btn_edit_title", lang), callback_data="edit_title")],
@@ -1208,6 +1288,8 @@ async def handle_edit_choice(
     edit_map = {
         "edit_name": ("enter_full_name", ENTER_NAME),
         "edit_phone": ("enter_phone", ENTER_PHONE),
+        "edit_passport": ("enter_passport", ENTER_PASSPORT),
+        "edit_birth_date": ("enter_birth_date", ENTER_BIRTH_DATE),
         "edit_title": ("enter_title", ENTER_TITLE),
         "edit_text": ("enter_description", ENTER_DESCRIPTION),
     }
@@ -1274,6 +1356,16 @@ async def submit_complaint(
         return await prompt_address(update, context, lang)
     if fields["attachments"]["required"] and not data.get("attachments"):
         return await prompt_attachments(update, context, lang)
+    if not isinstance(data.get("passport_data"), str) or not PASSPORT_REGEX.fullmatch(data["passport_data"]):
+        data.pop("passport_data", None)
+        return await prompt_passport(update, context, lang)
+    try:
+        birth = date.fromisoformat(data.get("birth_date", ""))
+    except (TypeError, ValueError):
+        birth = None
+    if birth is None or birth.year < 1900 or birth > date.today():
+        data.pop("birth_date", None)
+        return await prompt_birth_date(update, context, lang)
     if not isinstance(data.get("category_id"), int) or data["category_id"] <= 0:
         return await prompt_category_selection(update, context, lang)
     if fields["mfy"]["required"]:
@@ -1349,8 +1441,8 @@ async def submit_complaint(
                     complaint_text=data["complaint_text"],
                     mfy_area_id=data.get("mfy_area_id") if fields["mfy"]["enabled"] else None,
                     address_detail=data.get("address_detail") if fields["address"]["enabled"] else None,
-                    birth_date=None,
-                    passport_data=None,
+                    birth_date=data["birth_date"],
+                    passport_data=data["passport_data"],
                     deadline_days=deadline_days,
                     commit=False,
                 )
@@ -1945,7 +2037,7 @@ async def save_draft(telegram_id: int, data: dict) -> None:
     # Filter out non-serializable items
     draft_data = {
         k: v for k, v in data.items()
-        if k not in ("_editing",) and isinstance(v, (str, int, float, bool, list, dict, type(None)))
+        if k not in ("_editing", "passport_data", "birth_date") and isinstance(v, (str, int, float, bool, list, dict, type(None)))
     }
     async with get_session_factory()() as session:
         user = await UserService.get_or_create_user(session, telegram_id)

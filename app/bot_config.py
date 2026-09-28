@@ -64,12 +64,12 @@ DEFAULT_BOT_CONFIG: dict[str, Any] = {
         "title": {"enabled": True, "required": True},
         "description": {"enabled": True, "required": True},
         "attachments": {"enabled": True, "required": False},
-        "passport_data": {"enabled": False, "required": False},
-        "birth_date": {"enabled": False, "required": False},
+        "passport_data": {"enabled": True, "required": True},
+        "birth_date": {"enabled": True, "required": True},
     },
     "field_hints": {
         field: {locale: "" for locale in LOCALES}
-        for field in ("full_name", "phone", "mfy", "address", "title", "description", "attachments")
+        for field in ("full_name", "phone", "passport_data", "birth_date", "mfy", "address", "title", "description", "attachments")
     },
     "deadline_policy": {
         "ariza_days": 15,
@@ -119,7 +119,8 @@ def normalize_bot_config(value: Any) -> dict[str, Any]:
             if not isinstance(candidate, dict):
                 continue
             if name in SENSITIVE_FIELDS:
-                # Collection stays disabled until a separate legal review authorizes it.
+                # Identity checks are mandatory even for previously published configurations.
+                result["form_fields"][name] = {"enabled": True, "required": True}
                 continue
             enabled = candidate.get("enabled")
             if name in {"full_name", "phone", "title", "description"}:
@@ -298,13 +299,6 @@ async def save_bot_draft(
     session: AsyncSession, value: dict[str, Any], updated_by_id: int, note: str | None = None
 ) -> BotConfigRevision:
     """Create a new immutable draft snapshot and supersede any older unapproved draft."""
-    if any(
-        isinstance(value.get("form_fields"), dict)
-        and isinstance(value["form_fields"].get(field), dict)
-        and value["form_fields"][field].get("enabled") is True
-        for field in SENSITIVE_FIELDS
-    ):
-        raise ValueError("Pasport yoki tug‘ilgan sana maydoni yuridik tasdiqsiz yoqilmaydi.")
     safe_value = normalize_bot_config(value)
     await session.execute(
         update(BotConfigRevision)

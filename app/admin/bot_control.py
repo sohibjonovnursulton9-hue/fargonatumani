@@ -149,7 +149,7 @@ def build_bot_control_router(
             "help": _form_bool(form, "help_enabled"),
         }
         fields = config["form_fields"]
-        for field_name in ("full_name", "phone", "mfy", "address", "title", "description", "attachments"):
+        for field_name in ("full_name", "phone", "passport_data", "birth_date", "mfy", "address", "title", "description", "attachments"):
             for locale in LOCALES:
                 value = str(form.get(f"hint_{field_name}_{locale}", "")).strip()
                 if len(value) > 500:

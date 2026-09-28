@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # --- Admin ---
     admin_secret_key: str = Field(..., description="Secret key for session signing")
+    pii_encryption_key: str = Field(default="", description="Fernet key for identity fields")
     admin_session_lifetime: int = Field(default=28800, description="Session lifetime in seconds")
 
     # --- Initial Admin ---
@@ -72,14 +73,6 @@ class Settings(BaseSettings):
     )
 
     # --- Feature Flags ---
-    require_birth_date: bool = Field(
-        default=False,
-        description="OFF by default. Needs legal confirmation before enabling. See LEGAL-OPEN-QUESTIONS.md",
-    )
-    require_passport_data: bool = Field(
-        default=False,
-        description="OFF by default. Needs legal confirmation before enabling.",
-    )
     seed_demo_data: bool = Field(
         default=False,
         description="Seed provisional demo catalogs only when explicitly enabled in development.",
@@ -127,6 +120,7 @@ class Settings(BaseSettings):
                 len(self.telegram_bot_token) < 30
                 or self.telegram_bot_token.startswith("0000000000:")
                 or len(self.admin_secret_key) < 32
+                or len(self.pii_encryption_key) < 40
                 or self.admin_secret_key.startswith("change-me")
                 or not self.database_url.startswith(("postgresql+asyncpg://", "postgres://"))
             )
